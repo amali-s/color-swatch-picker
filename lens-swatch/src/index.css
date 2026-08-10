@@ -1,0 +1,124 @@
+@import '@fontsource/rethink-sans/400.css';
+@import '@fontsource/rethink-sans/500.css';
+@import '@fontsource/spectral/300.css';
+
+/*
+  Theme tokens pulled from the "Lens swatch" Figma file
+  (file key 50P1w6P6GpEllzD4NVpMnF, page "Page 1").
+  See frames: Empty state (1:2), Filled (2:172), Camera (2:260).
+*/
+:root {
+  /* Surfaces */
+  --layer-1: #fff8f0; /* page background */
+  --background: #ede6de; /* card / row background */
+
+  /* Text */
+  --text-primary: #1b2323;
+  --text-secondary: #59554b;
+  --text-tertiary: #827a64;
+  --secondary-action: #575040;
+
+  /* Brand */
+  --dark-blue: #096694; /* "Lens swatch" wordmark */
+  --brand-blue: #1e526f;
+  --accent: #0095cc; /* primary button */
+  --on-accent: #f6f1eb;
+
+  /* Type */
+  --font-heading: 'Rethink Sans', system-ui, sans-serif;
+  --font-body: 'Spectral', Georgia, serif;
+
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #d9d2c8;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#root {
+  width: 100%;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+/* Typography scale (Figma text styles) */
+.text-heading-5 {
+  font-family: var(--font-heading);
+  font-weight: 400;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.text-heading-2 {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.text-heading-1 {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: -0.14px;
+}
+
+.text-body-2 {
+  font-family: var(--font-body);
+  font-weight: 300;
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+.text-body-1 {
+  font-family: var(--font-body);
+  font-weight: 300;
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+.text-label-2 {
+  font-family: var(--font-body);
+  font-weight: 300;
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.84px;
+}

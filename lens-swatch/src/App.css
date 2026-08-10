@@ -1,0 +1,147 @@
+/* Phone shell — the Figma frames are a 393x852 mobile canvas. On a wide
+   viewport we present that canvas as a centered "device" card; on an
+   actual phone viewport it expands edge-to-edge. */
+.phone-shell {
+  width: 100%;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.phone-screen {
+  width: 393px;
+  height: 852px;
+  max-height: calc(100svh - 64px);
+  background: var(--layer-1);
+  border-radius: 40px;
+  box-shadow:
+    0 30px 60px -20px rgba(27, 35, 35, 0.35),
+    0 0 0 10px #16130f;
+  overflow: hidden;
+  position: relative;
+}
+
+@media (max-width: 460px) {
+  .phone-shell {
+    padding: 0;
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100svh;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+.screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen__content {
+  flex: 1;
+  padding: 64px 32px 24px;
+  overflow-y: auto;
+}
+
+/* Empty state card */
+.empty-card {
+  margin-top: 64px;
+  background: var(--background);
+  border-radius: 8px;
+  padding: 56px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+/* Saved swatches list */
+.swatch-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.swatch-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--background);
+}
+
+.swatch-row__chip {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* Bottom tab bar */
+.bottom-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 12px 24px calc(env(safe-area-inset-bottom, 0px) + 20px);
+  background: var(--layer-1);
+}
+
+.bottom-nav__button {
+  width: 84px;
+  height: 60px;
+  border-radius: 12px;
+  background: var(--background);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+}
+
+/* Camera viewport */
+.camera-viewport {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(233, 154, 154, 0.5) 0%,
+      rgba(220, 29, 29, 0.35) 49%,
+      rgba(24, 64, 120, 0.45) 100%
+    ),
+    linear-gradient(90deg, rgb(166, 144, 144) 0%, rgb(166, 144, 144) 100%);
+}
+
+.floating-chip {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: var(--layer-1);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 150px;
+  box-shadow: 0 4px 16px rgba(27, 35, 35, 0.18);
+}
+
+.floating-chip__color {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.floating-chip__save {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
