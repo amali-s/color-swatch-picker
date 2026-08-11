@@ -69,7 +69,7 @@ A note on accuracy: exact browser API names below (`getUserMedia`, `getImageData
 - Deciding single-frame capture vs. multi-frame averaging (averaging gives steadier results but is a stretch goal, not core)
 
 **Designer input needed from you:**
-- A decision on what story the 3–5s hold is telling the user: "hold still so I can get a clean shot" vs. "I'm sampling across time for stability." This is a product/UX call, not just an engineering one, and it changes what the hold-progress UI should communicate in Phase 4.
+- ~~A decision on what story the 3–5s hold is telling the user...~~ **Resolved:** single-frame capture, fired at hold completion — not multi-frame averaging. Full interaction narrative and the resulting technical decisions (capture timing, blob-based tooltip positioning, sampling, honest color-value framing) are in [phase3-capture-reveal-decisions.md](phase3-capture-reveal-decisions.md).
 
 ---
 
@@ -82,8 +82,9 @@ A note on accuracy: exact browser API names below (`getUserMedia`, `getImageData
 - Respecting `prefers-reduced-motion` for accessibility
 
 **Designer input needed from you (heaviest design phase):**
-- Figma mockups/prototype for each capture state: idle camera view, hold-in-progress indicator (pick one: countdown ring, progress bar, pulse), and capture confirmation (snap, flash, other feedback).
-- A concrete motion spec: timing and easing that reads as "quick and physical" rather than "slow and decorative" for this specific app.
+- ~~Idle / hold-in-progress states~~ **Resolved:** idle = translucent container, "Hold to swatch," empty tooltip stack bottom-right; holding = message eases to "Swatching," tooltips show loading state. See [phase3-capture-reveal-decisions.md](phase3-capture-reveal-decisions.md).
+- Figma mockups/prototype still needed for: capture confirmation visual (snap, flash, other feedback beyond the described tooltip-fill).
+- Still open: concrete motion spec — timing and easing that reads as "quick and physical" rather than "slow and decorative" for this specific app (including the reveal transition itself).
 - Accent color and near-black treatment applied to real mockups, not just described.
 
 ---
@@ -98,8 +99,8 @@ A note on accuracy: exact browser API names below (`getUserMedia`, `getImageData
 - Layout for the swatch + hex code + copy button cluster
 
 **Designer input needed from you:**
-- Figma mockups for the reveal screen: swatch layout, hex code typography, copy-confirmation micro-interaction (checkmark, label swap, etc.).
-- A decision and visual treatment for showing the 3 swatches over the frozen captured frame (recommended, since it makes the "what I saw → what I got" connection visible and turns the algorithm's imperfection into an honest, designed moment) vs. showing them separately.
+- ~~Decision on showing swatches over the frozen frame vs. separately~~ **Resolved:** swatches are positioned via tooltip anchored to each color's largest continuous blob location — implements the "over the frozen frame" treatment. Color value itself is still communicated as an aggregate ("this color, aggregated across everywhere it appears"), not a single-spot reading. See [phase3-capture-reveal-decisions.md](phase3-capture-reveal-decisions.md).
+- Figma mockups still needed for: hex code typography, copy-confirmation micro-interaction (checkmark, label swap, etc.), and the save-icon treatment.
 - Error/empty states: camera permission denied, clipboard unsupported, no camera detected.
 
 ---
