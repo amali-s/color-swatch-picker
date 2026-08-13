@@ -40,6 +40,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .screen__content {
@@ -120,7 +121,6 @@
 
 .floating-chip {
   position: absolute;
-  transform: translate(-50%, -50%);
   background: var(--layer-1);
   border-radius: 8px;
   padding: 8px;
@@ -129,6 +129,31 @@
   gap: 12px;
   min-width: 150px;
   box-shadow: 0 4px 16px rgba(27, 35, 35, 0.18);
+}
+
+/* Anchor modifiers carry the resting transform so the reveal keyframes
+   (which must animate the same transform) have a target to land on. */
+.floating-chip--center {
+  transform: translate(-50%, -50%);
+}
+.floating-chip--left {
+  transform: translate(0, -50%);
+}
+
+.floating-chip--reveal.floating-chip--center {
+  animation: chipIn var(--dur-base) var(--ease-snap) both;
+}
+.floating-chip--reveal.floating-chip--left {
+  animation: chipInLeft var(--dur-base) var(--ease-snap) both;
+}
+
+.floating-chip__copy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  padding: 0;
+  text-align: left;
 }
 
 .floating-chip__color {
@@ -144,4 +169,131 @@
   align-items: center;
   justify-content: center;
   padding: 4px;
+}
+
+@keyframes chipIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 8px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@keyframes chipInLeft {
+  from {
+    opacity: 0;
+    transform: translate(0, calc(-50% + 8px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+/* ---- Capture moment (Phase 4) ---- */
+
+/* The viewport is the capture surface: press-and-hold anywhere on it. */
+.camera-viewport {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+  transform-origin: 50% 50%;
+}
+
+/* "Hold to swatch" / "Swatching" target card. */
+.capture-card {
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  top: 244px;
+  height: 114px;
+  border-radius: 8px;
+  background: rgba(255, 248, 240, 0.34);
+  border: 1px solid rgba(255, 248, 240, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Pulse wash — opacity/scale/tint are painted imperatively per frame. */
+.capture-card__glow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  background: rgba(255, 248, 240, 0.9);
+}
+
+/* Determinate progress ring tracing the card border. */
+.capture-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.capture-card__label {
+  position: relative;
+  color: var(--secondary-action);
+}
+
+/* Full-bleed capture flash (white snap, or a soft accent tint under
+   reduced motion). Opacity is driven imperatively. */
+.capture-flash {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.retake-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: transparent;
+  padding: 8px 4px;
+  color: var(--layer-1);
+  text-shadow: 0 1px 6px rgba(27, 35, 35, 0.35);
+}
+
+.capture-toast-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 104px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.capture-toast {
+  background: var(--text-primary);
+  color: var(--layer-1);
+  border-radius: 32px;
+  padding: 8px 16px;
+  box-shadow: 0 4px 16px rgba(27, 35, 35, 0.28);
+}
+
+/* Reduced motion: drop the pulse/flash/reveal motion. The determinate ring
+   still fills (no vestibular risk) and chips appear in place. The JS layer
+   also honors prefers-reduced-motion; this is the CSS belt-and-suspenders. */
+@media (prefers-reduced-motion: reduce) {
+  .floating-chip--reveal.floating-chip--center,
+  .floating-chip--reveal.floating-chip--left {
+    animation: none;
+  }
+  .capture-card__glow {
+    display: none;
+  }
 }

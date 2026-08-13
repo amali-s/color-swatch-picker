@@ -28,6 +28,10 @@
   --font-heading: 'Rethink Sans', system-ui, sans-serif;
   --font-body: 'Spectral', Georgia, serif;
 
+  /* Motion (Phase 4 — mirrors src/capture/motion.ts) */
+  --dur-base: 220ms;
+  --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
+
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
