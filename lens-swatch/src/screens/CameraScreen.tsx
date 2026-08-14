@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomNav from '../components/BottomNav';
 import CaptureTarget from '../components/CaptureTarget';
 import FloatingChip from '../components/FloatingChip';
+import { useCamera } from '../hooks/useCamera';
+import { useColorExtraction } from '../hooks/useColorExtraction';
 import { useHoldTimer } from '../hooks/useHoldTimer';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import {
@@ -19,7 +21,6 @@ import type { Swatch } from '../types';
 import type { View } from '../App';
 
 interface Props {
-  detected: Swatch[];
   savedIds: Set<string>;
   onSave: (swatch: Swatch) => void;
   onNavChange: (view: View) => void;
@@ -32,6 +33,9 @@ interface ChipLayout {
 
 // Positions from Figma 2:260. Chip 2 is pinned flush-left (a centered 13%
 // would clip it off the viewport), so it gets its own anchor + reveal keyframe.
+// v1 keeps these fixed design positions; anchoring chips to each color's real
+// blob (result.clusters[i].anchor) is a deliberate follow-up — see
+// phase5-integration-plan.md.
 const CHIP_LAYOUT: ChipLayout[] = [
   { position: { left: '50%', top: '9%' }, anchor: 'center' },
   { position: { left: '50px', top: '43%' }, anchor: 'left' },
@@ -39,20 +43,34 @@ const CHIP_LAYOUT: ChipLayout[] = [
 ];
 
 /**
- * The capture moment (Phase 4). Reuses `useHoldTimer` for idle → holding →
- * captured, and layers the pulse + determinate ring (painted imperatively off
- * the hook's per-frame tick), the capture flash + freeze punch, and the
- * staggered swatch reveal. Camera-feed wiring (getUserMedia) is a separate
- * roadmap phase — the viewport keeps the Figma placeholder gradient for now.
+ * The capture moment (Phase 4) wired to the real extraction pipeline (Phase 5
+ * integration). `useCamera` drives a live viewfinder; on hold-complete the
+ * current video frame is grabbed to a canvas and handed to `useColorExtraction`
+ * (k-means + blob detection in a Web Worker). The Phase 4 choreography — pulse,
+ * determinate ring, capture flash + freeze punch, staggered reveal — is
+ * unchanged; the reveal is now gated on real extraction completing rather than a
+ * fixed delay, and the detected chips carry the actual dominant colors.
  */
-export default function CameraScreen({ detected, savedIds, onSave, onNavChange }: Props) {
+export default function CameraScreen({ savedIds, onSave, onNavChange }: Props) {
   const reduced = usePrefersReducedMotion();
+  const { videoRef, status: cameraStatus, error: cameraError } = useCamera();
+  const {
+    extract,
+    result,
+    status: extractStatus,
+    error: extractError,
+    reset: resetExtraction,
+  } = useColorExtraction();
 
   const [revealed, setRevealed] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  // Set when a hold completes but no frame could be grabbed (camera not yet
+  // producing pixels). Distinct from an extraction error.
+  const [grabFailed, setGrabFailed] = useState(false);
 
   const viewportRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<SVGRectElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
@@ -60,6 +78,18 @@ export default function CameraScreen({ detected, savedIds, onSave, onNavChange }
   const beatPhaseRef = useRef(0);
   const accentRef = useRef('#0095cc');
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  // Adapt the engine's PaletteResult into the UI's Swatch shape. The engine
+  // emits "#RRGGBB" (uppercase, with hash); Swatch stores the bare hex and the
+  // UI re-adds the hash. The id is derived from the hex so saving the same
+  // color across captures dedupes by color in the saved list.
+  const detected = useMemo<Swatch[]>(() => {
+    if (!result) return [];
+    return result.clusters.map((cluster) => {
+      const hex = cluster.hex.replace('#', '');
+      return { id: `detected-${hex}`, hex };
+    });
+  }, [result]);
 
   // Pull the live accent token so the ring/glow/flash stay in sync with CSS.
   useEffect(() => {
@@ -104,6 +134,29 @@ export default function CameraScreen({ detected, savedIds, onSave, onNavChange }
     [reduced],
   );
 
+  // Grab the current video frame and hand its pixels to the extraction worker.
+  // Runs synchronously inside the hold timer's completion tick, while <video> is
+  // still mounted and playing. Returns false if no frame could be read.
+  const grabFrame = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return false;
+
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    if (!width || !height) return false;
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+    ctx.drawImage(video, 0, 0, width, height);
+
+    // One frame's pixels → k-means (colors) + blob detection (positions).
+    extract(ctx.getImageData(0, 0, width, height));
+    return true;
+  }, [extract, videoRef]);
+
   const capture = useCallback(() => {
     if ('vibrate' in navigator) {
       try {
@@ -147,10 +200,20 @@ export default function CameraScreen({ detected, savedIds, onSave, onNavChange }
       }
     }
 
-    after(200, () => setRevealed(true));
-  }, [after, reduced]);
+    // Kick off real extraction. Reveal is gated on it completing (see effect).
+    if (!grabFrame()) setGrabFailed(true);
+  }, [after, reduced, grabFrame]);
 
   const hold = useHoldTimer(HOLD_THRESHOLD_MS, capture, onTick);
+
+  // Reveal the swatches once extraction lands. A short beat lets the capture
+  // flash breathe first; under reduced motion it reveals immediately.
+  useEffect(() => {
+    if (hold.state !== 'captured' || extractStatus !== 'done') return;
+    if (detected.length === 0) return; // degenerate frame → handled as a failure state
+    const t = setTimeout(() => setRevealed(true), reduced ? 0 : 140);
+    return () => clearTimeout(t);
+  }, [hold.state, extractStatus, detected.length, reduced]);
 
   const resetVisuals = useCallback(() => {
     beatPhaseRef.current = 0;
@@ -169,12 +232,14 @@ export default function CameraScreen({ detected, savedIds, onSave, onNavChange }
   const onRetake = useCallback(() => {
     clearTimers();
     hold.reset();
+    resetExtraction();
     setRevealed(false);
     setCopiedId(null);
+    setGrabFailed(false);
     const viewport = viewportRef.current;
     if (viewport) viewport.style.transform = 'scale(1)';
     resetVisuals();
-  }, [clearTimers, hold, resetVisuals]);
+  }, [clearTimers, hold, resetExtraction, resetVisuals]);
 
   const copyChip = useCallback(
     (swatch: Swatch) => {
@@ -202,20 +267,60 @@ export default function CameraScreen({ detected, savedIds, onSave, onNavChange }
   // Clear pending timers on unmount.
   useEffect(() => clearTimers, [clearTimers]);
 
-  const targetLabel = hold.state === 'holding' ? 'Swatching' : 'Hold to swatch';
-  const showTarget = hold.state === 'idle' || hold.state === 'holding';
+  const cameraReady = cameraStatus === 'ready';
   const isCaptured = hold.state === 'captured';
+  // Extraction failed, produced nothing, or the frame couldn't be grabbed.
+  const failed =
+    isCaptured &&
+    (grabFailed ||
+      extractStatus === 'error' ||
+      (extractStatus === 'done' && detected.length === 0));
+  // Held/holding target card also covers the brief "analyzing" beat after
+  // capture, before the reveal — until it either reveals or fails.
+  const showTarget = cameraReady && !revealed && !failed;
+  const targetLabel =
+    hold.state === 'holding'
+      ? 'Swatching'
+      : isCaptured
+        ? 'Reading colors'
+        : 'Hold to swatch';
 
   return (
     <div className="screen" style={{ background: 'var(--layer-1)' }}>
       <div
         ref={viewportRef}
         className="camera-viewport"
-        onPointerDown={hold.start}
+        onPointerDown={cameraReady ? hold.start : undefined}
         onPointerUp={onHoldEnd}
         onPointerLeave={onHoldEnd}
         onPointerCancel={onHoldEnd}
       >
+        <video
+          ref={videoRef}
+          className={`camera-feed${cameraReady ? '' : ' is-hidden'}`}
+          autoPlay
+          muted
+          playsInline
+        />
+        {/* Frozen frame, drawn on capture and shown over the live feed so the
+            revealed chips sit on the image the colors came from. */}
+        <canvas
+          ref={canvasRef}
+          className={`camera-frame${isCaptured ? '' : ' is-hidden'}`}
+          aria-hidden="true"
+        />
+
+        {cameraStatus === 'pending' && (
+          <div className="capture-card">
+            <h2 className="capture-card__label text-heading-2">Starting camera…</h2>
+          </div>
+        )}
+        {cameraStatus === 'error' && (
+          <div className="capture-card">
+            <h2 className="capture-card__label text-heading-2">{cameraError}</h2>
+          </div>
+        )}
+
         {showTarget && (
           <CaptureTarget label={targetLabel} glowRef={glowRef} ringRef={ringRef} />
         )}
@@ -239,6 +344,14 @@ export default function CameraScreen({ detected, savedIds, onSave, onNavChange }
               />
             );
           })}
+
+        {failed && (
+          <div className="capture-card">
+            <h2 className="capture-card__label text-heading-2">
+              {extractError ?? "Couldn't read the colors"}
+            </h2>
+          </div>
+        )}
 
         {isCaptured && (
           <button type="button" className="retake-btn text-heading-1" onClick={onRetake}>

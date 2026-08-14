@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "color-picker", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "lens-swatch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "lens-swatch", "run", "dev", "--", "--port", "5174", "--strictPort"],
+      "port": 5174
     }
   ]
 }

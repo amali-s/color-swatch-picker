@@ -204,6 +204,25 @@
   transform-origin: 50% 50%;
 }
 
+/* Live feed and the frozen capture frame both fill the viewport with
+   object-fit: cover; the gradient on .camera-viewport shows through only while
+   the camera is pending/errored (feed hidden). The frozen frame paints over the
+   live feed after capture so revealed chips sit on the image they came from. */
+.camera-feed,
+.camera-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.camera-feed.is-hidden,
+.camera-frame.is-hidden {
+  display: none;
+}
+
 /* "Hold to swatch" / "Swatching" target card. */
 .capture-card {
   position: absolute;
