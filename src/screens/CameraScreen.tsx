@@ -2,10 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import BottomNav from '../components/BottomNav';
 import CaptureTarget from '../components/CaptureTarget';
 import FloatingChip from '../components/FloatingChip';
+import SkeletonChips from '../components/SkeletonChips';
+import { copyText } from '../lib/clipboard';
 import { useCamera } from '../hooks/useCamera';
 import { useColorExtraction } from '../hooks/useColorExtraction';
 import { useHoldTimer } from '../hooks/useHoldTimer';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
+import { useFeedLuminance } from '../hooks/useFeedLuminance';
 import {
   DUR_FLASH,
   DUR_QUICK,
@@ -22,7 +25,8 @@ import type { View } from '../App';
 
 interface Props {
   savedIds: Set<string>;
-  onSave: (swatch: Swatch) => void;
+  /** Add if not saved, remove if saved (the chip bookmark toggle). */
+  onToggleSave: (swatch: Swatch) => void;
   onNavChange: (view: View) => void;
 }
 
@@ -63,14 +67,13 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
  * unchanged; the reveal is now gated on real extraction completing rather than a
  * fixed delay, and the detected chips carry the actual dominant colors.
  */
-export default function CameraScreen({ savedIds, onSave, onNavChange }: Props) {
+export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Props) {
   const reduced = usePrefersReducedMotion();
   const { videoRef, status: cameraStatus, error: cameraError } = useCamera();
   const {
     extract,
     result,
     status: extractStatus,
-    error: extractError,
     reset: resetExtraction,
   } = useColorExtraction();
 
@@ -344,13 +347,10 @@ export default function CameraScreen({ savedIds, onSave, onNavChange }: Props) {
   }, [clearTimers, hold, resetExtraction, resetVisuals]);
 
   const copyChip = useCallback(
-    (swatch: Swatch) => {
+    async (swatch: Swatch) => {
       const hex = `#${swatch.hex}`;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(hex).catch(() => {
-          /* Clipboard blocked (permissions / insecure context) — toast still shows intent. */
-        });
-      }
+      const ok = await copyText(hex);
+      if (!ok) return; // clipboard blocked — no false "Copied" swap
       setCopiedId(swatch.id);
       after(1200, () => setCopiedId((current) => (current === swatch.id ? null : current)));
       showToast(`Copied ${hex}`);
@@ -358,12 +358,13 @@ export default function CameraScreen({ savedIds, onSave, onNavChange }: Props) {
     [after, showToast],
   );
 
-  const saveChip = useCallback(
+  const toggleChip = useCallback(
     (swatch: Swatch) => {
-      onSave(swatch);
-      showToast('Saved to swatches');
+      const wasSaved = savedIds.has(swatch.id);
+      onToggleSave(swatch);
+      showToast(wasSaved ? 'Removed from swatches' : 'Saved to swatches');
     },
-    [onSave, showToast],
+    [onToggleSave, savedIds, showToast],
   );
 
   // Clear pending timers on unmount.
@@ -371,6 +372,10 @@ export default function CameraScreen({ savedIds, onSave, onNavChange }: Props) {
 
   const cameraReady = cameraStatus === 'ready';
   const isCaptured = hold.state === 'captured';
+  // Is the area behind the capture card dark? Drives light vs. dark card ink.
+  // Sampled while a live feed is showing; defaults to dark (light ink) for the
+  // no-feed states (pending / denied), which render over a dark fallback.
+  const feedDark = useFeedLuminance(videoRef, cameraReady && !revealed);
   // Extraction failed, produced nothing, or the frame couldn't be grabbed.
   const failed =
     isCaptured &&
@@ -391,7 +396,7 @@ export default function CameraScreen({ savedIds, onSave, onNavChange }: Props) {
     <div className="screen" style={{ background: 'var(--layer-1)' }}>
       <div
         ref={viewportRef}
-        className="camera-viewport"
+        className={`camera-viewport${feedDark ? ' is-dark-feed' : ''}`}
         onPointerDown={cameraReady ? hold.start : undefined}
         onPointerUp={onHoldEnd}
         onPointerLeave={onHoldEnd}
@@ -414,17 +419,22 @@ export default function CameraScreen({ savedIds, onSave, onNavChange }: Props) {
 
         {cameraStatus === 'pending' && (
           <div className="capture-card">
-            <h2 className="capture-card__label text-heading-2">Starting camera…</h2>
+            <h2 className="capture-card__label">Starting camera…</h2>
           </div>
         )}
         {cameraStatus === 'error' && (
           <div className="capture-card">
-            <h2 className="capture-card__label text-heading-2">{cameraError}</h2>
+            <h2 className="capture-card__label">{cameraError}</h2>
           </div>
         )}
 
         {showTarget && (
-          <CaptureTarget label={targetLabel} glowRef={glowRef} ringRef={ringRef} />
+          <>
+            <CaptureTarget label={targetLabel} glowRef={glowRef} ringRef={ringRef} />
+            {/* Low-emphasis loading skeletons occupying the reveal slots while
+                there's no blob data yet (idle + hold + the analysis beat). */}
+            <SkeletonChips animate={!reduced} />
+          </>
         )}
 
         {isCaptured &&
@@ -444,21 +454,23 @@ export default function CameraScreen({ savedIds, onSave, onNavChange }: Props) {
                 copied={copiedId === swatch.id}
                 revealDelay={i * STAGGER}
                 animate={!reduced}
-                onSave={() => saveChip(swatch)}
+                onToggle={() => toggleChip(swatch)}
                 onCopy={() => copyChip(swatch)}
               />
             );
           })}
 
+        {/* Extraction errored, returned nothing, or the frame couldn't be
+            grabbed (26-347). Tapping the card returns to idle. */}
         {failed && (
-          <div className="capture-card">
-            <h2 className="capture-card__label text-heading-2">
-              {extractError ?? "Couldn't read the colors"}
-            </h2>
-          </div>
+          <button type="button" className="capture-card capture-card--error" onClick={onRetake}>
+            <span className="capture-card__label">
+              Unable to collect colors. Tap to try again.
+            </span>
+          </button>
         )}
 
-        {isCaptured && (
+        {isCaptured && !failed && (
           <button type="button" className="retake-btn text-heading-1" onClick={onRetake}>
             Tap to retake
           </button>

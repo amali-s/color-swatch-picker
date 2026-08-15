@@ -9,20 +9,23 @@
 */
 :root {
   /* Surfaces */
-  --layer-1: #fff8f0; /* page background */
-  --background: #ede6de; /* card / row background */
+  --layer-1: #fff8f0; /* card & chip surface ("Layer 1") */
+  --background: #ede6de; /* app background / dividers / active-nav pill */
+  --foreground: #fffdfa; /* on-dark: text on the camera feed + nav bar surface */
 
   /* Text */
   --text-primary: #1b2323;
   --text-secondary: #59554b;
   --text-tertiary: #827a64;
-  --secondary-action: #575040;
+  --text-disabled: #adaba5;
+  --secondary-action: #575040; /* dark-brown "button (secondary action)" token */
 
   /* Brand */
-  --dark-blue: #096694; /* "Lens swatch" wordmark */
-  --brand-blue: #1e526f;
-  --accent: #0095cc; /* primary button */
-  --on-accent: #f6f1eb;
+  --dark-blue: #096694; /* accent / title — "Lens swatch" wordmark */
+  /* Accent used by the Phase-4 capture ring / glow / flash only. The primary
+     "Open camera" button uses the dark-brown --secondary-action token (per the
+     design token spec). */
+  --accent: #0095cc;
 
   /* Type */
   --font-heading: 'Rethink Sans', system-ui, sans-serif;
@@ -83,7 +86,7 @@ button {
   font-family: var(--font-heading);
   font-weight: 400;
   font-size: 32px;
-  line-height: 1;
+  line-height: 1.3;
   letter-spacing: 0;
 }
 
@@ -91,7 +94,7 @@ button {
   font-family: var(--font-heading);
   font-weight: 500;
   font-size: 20px;
-  line-height: 1;
+  line-height: 1.3;
   letter-spacing: 0;
 }
 
@@ -124,5 +127,7 @@ button {
   font-weight: 300;
   font-size: 14px;
   line-height: 1.5;
-  letter-spacing: -0.84px;
+  /* Figma's "Label 2" carries letterSpacing:-6 — a variable artifact, not
+     intended (per the spec), so hex codes render at normal tracking. */
+  letter-spacing: 0;
 }

@@ -71,7 +71,7 @@ function describeCameraError(err: unknown): string {
     switch (err.name) {
       case 'NotAllowedError':
       case 'SecurityError':
-        return 'Camera permission denied. Allow camera access and reload the page.'
+        return 'Camera permissions are denied. Enable camera and reload.'
       case 'NotFoundError':
       case 'DevicesNotFoundError':
         return 'No camera was found on this device.'

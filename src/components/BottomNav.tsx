@@ -1,36 +1,39 @@
-import { Camera } from 'lucide-react';
-import SwatchesFanIcon from './SwatchesFanIcon';
+import SwatchesIcon from './SwatchesIcon';
+import CameraIcon from './CameraIcon';
 import type { View } from '../App';
 
 interface Props {
   view: View;
   onChange: (view: View) => void;
-  /** Camera screen sits on a photo/gradient background, so its inactive icon needs a lighter tint. */
-  inverted?: boolean;
 }
 
-export default function BottomNav({ view, onChange, inverted = false }: Props) {
-  const inactiveColor = inverted ? 'var(--layer-1)' : 'var(--secondary-action)';
-
+/**
+ * Persistent bottom tab bar — cream (`--foreground`) surface, present on every
+ * screen (both Swatches states and the Camera tab). The active target sits on a
+ * rounded `--background` pill; the glyphs themselves don't recolour between
+ * states (matches the exported mocks). Both buttons are ≥44px and expose
+ * `aria-current`.
+ */
+export default function BottomNav({ view, onChange }: Props) {
   return (
-    <nav className="bottom-nav">
+    <nav className="bottom-nav" aria-label="Views">
       <button
+        type="button"
         aria-label="Saved swatches"
-        aria-pressed={view === 'list'}
+        aria-current={view === 'list' ? 'page' : undefined}
         onClick={() => onChange('list')}
-        className="bottom-nav__button"
-        style={view === 'list' ? undefined : { background: 'transparent' }}
+        className={`bottom-nav__button${view === 'list' ? ' is-active' : ''}`}
       >
-        <SwatchesFanIcon size={28} color={view === 'list' ? 'var(--secondary-action)' : inactiveColor} />
+        <SwatchesIcon size={32} />
       </button>
       <button
+        type="button"
         aria-label="Camera"
-        aria-pressed={view === 'camera'}
+        aria-current={view === 'camera' ? 'page' : undefined}
         onClick={() => onChange('camera')}
-        className="bottom-nav__button"
-        style={view === 'camera' ? undefined : { background: 'transparent' }}
+        className={`bottom-nav__button${view === 'camera' ? ' is-active' : ''}`}
       >
-        <Camera size={26} color={view === 'camera' ? 'var(--secondary-action)' : inactiveColor} strokeWidth={1.75} />
+        <CameraIcon size={28} />
       </button>
     </nav>
   );

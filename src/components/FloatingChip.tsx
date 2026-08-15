@@ -1,4 +1,4 @@
-import { Bookmark, Check, Copy } from 'lucide-react';
+import { Bookmark } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { Swatch } from '../types';
 
@@ -16,14 +16,18 @@ interface Props {
   animate: boolean;
   /** Ref to the chip's root element, so the parent can measure it for clamping. */
   rootRef?: (el: HTMLDivElement | null) => void;
-  onSave: () => void;
+  /** Toggle this color in the saved list (bookmark). */
+  onToggle: () => void;
+  /** Copy `#HEX` (tap the chip body / hex). */
   onCopy: () => void;
 }
 
 /**
- * A detected-color chip over the viewfinder. Phase 4 adds the copy affordance
- * that the locked scope requires (tap the swatch → copy `#HEX`, label swaps to
- * "Copied"); the bookmark stays as the secondary save action.
+ * A detected-color chip anchored over the frozen frame. Matching the Figma
+ * reveal, the chip is just a color square + hex; tapping the body copies `#HEX`
+ * and swaps the label to "Copied" (26-505), while the outline bookmark toggles
+ * the color in the saved list — filled when saved (26-544) — and hides while the
+ * "Copied" label is showing.
  */
 export default function FloatingChip({
   swatch,
@@ -34,7 +38,7 @@ export default function FloatingChip({
   revealDelay,
   animate,
   rootRef,
-  onSave,
+  onToggle,
   onCopy,
 }: Props) {
   const className = [
@@ -61,26 +65,23 @@ export default function FloatingChip({
         <span className="text-label-2" style={{ color: 'var(--text-tertiary)' }}>
           {copied ? 'Copied' : swatch.hex}
         </span>
-        {copied ? (
-          <Check size={14} color="var(--accent)" strokeWidth={2} />
-        ) : (
-          <Copy size={13} color="var(--text-tertiary)" strokeWidth={1.75} />
-        )}
       </button>
-      <button
-        type="button"
-        aria-label={saved ? `${swatch.hex} saved` : `Save ${swatch.hex}`}
-        aria-pressed={saved}
-        onClick={onSave}
-        className="floating-chip__save"
-      >
-        <Bookmark
-          size={15}
-          color="var(--text-tertiary)"
-          fill={saved ? 'var(--text-tertiary)' : 'none'}
-          strokeWidth={1.75}
-        />
-      </button>
+      {!copied && (
+        <button
+          type="button"
+          aria-label={saved ? `Remove #${swatch.hex} from saved swatches` : `Save #${swatch.hex}`}
+          aria-pressed={saved}
+          onClick={onToggle}
+          className="floating-chip__save"
+        >
+          <Bookmark
+            size={15}
+            color="var(--text-tertiary)"
+            fill={saved ? 'var(--text-tertiary)' : 'none'}
+            strokeWidth={1.75}
+          />
+        </button>
+      )}
     </div>
   );
 }

@@ -46,7 +46,7 @@ export default function CaptureTarget({ label, glowRef, ringRef }: Props) {
           vectorEffect="non-scaling-stroke"
         />
       </svg>
-      <h2 className="capture-card__label text-heading-2">{label}</h2>
+      <h2 className="capture-card__label">{label}</h2>
     </div>
   );
 }

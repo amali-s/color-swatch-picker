@@ -10,8 +10,8 @@ export default function PrimaryButton({
       {...rest}
       className="text-heading-1"
       style={{
-        background: 'var(--accent)',
-        color: 'var(--on-accent)',
+        background: 'var(--secondary-action)',
+        color: 'var(--foreground)',
         borderRadius: 32,
         padding: '8px 12px',
         display: 'inline-flex',
