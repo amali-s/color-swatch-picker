@@ -14,6 +14,8 @@ interface Props {
   revealDelay: number;
   /** Skipped under prefers-reduced-motion. */
   animate: boolean;
+  /** Ref to the chip's root element, so the parent can measure it for clamping. */
+  rootRef?: (el: HTMLDivElement | null) => void;
   onSave: () => void;
   onCopy: () => void;
 }
@@ -31,6 +33,7 @@ export default function FloatingChip({
   copied,
   revealDelay,
   animate,
+  rootRef,
   onSave,
   onCopy,
 }: Props) {
@@ -44,6 +47,7 @@ export default function FloatingChip({
 
   return (
     <div
+      ref={rootRef}
       className={className}
       style={{ ...position, animationDelay: animate ? `${revealDelay}ms` : undefined }}
     >

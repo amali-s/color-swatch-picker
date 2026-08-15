@@ -81,18 +81,36 @@ owns the camera/canvas/extraction, and `App` keeps only the saved-swatch list.
 
 ## Decisions taken (defaults)
 
-- **Chip positioning:** kept the fixed Figma `CHIP_LAYOUT` positions for v1.
-  Anchoring each chip to its real blob (`result.clusters[i].anchor`, mapped
-  through the same `object-fit: cover` geometry the engine's `AnchorMarkers`
-  use) is a deliberate follow-up, not v1.
+- **Chip positioning:** anchored to each color's real blob (done — see below).
 - **State ownership:** detection lives in `CameraScreen`, not `App`.
 - **Tests:** the engine's algorithm tests were ported and a `test` script added,
   so the "reported colors are independent of the blob/positioning pass"
   invariant travels with the code.
 
+## Anchor-based chip positioning (done)
+
+Chips now render where each color actually sits in the frame, closing the v1 gap.
+`chipPlacements` in `CameraScreen.tsx` pushes `result.clusters[i].anchor` through
+the same `object-fit: cover` transform the frozen frame is drawn with (the geometry
+the engine's `AnchorMarkers` established), using `result.meta.width/height` for the
+image dimensions. Two adaptations for the polished UI:
+
+- **Size-aware clamping.** The lens-swatch chips are ~150px-wide pills, not the
+  engine's 14px dots, so the point-only clamp isn't enough. Each chip's root is
+  measured in a `useLayoutEffect` (before paint, so the corrected position is what
+  the user first sees — no visible jump) and its center is clamped by half its
+  measured size + a ~12px margin, keeping the whole pill on screen.
+- **Null-anchor fallback.** When `cluster.anchor === null` (no contiguous region),
+  the chip falls back to its original fixed `CHIP_LAYOUT` slot, so the reveal always
+  shows three copyable colors.
+
+`anchor` still never influences the reported color — it only moves the chip
+(guaranteed by `color/types.ts`).
+
 ## Follow-ups (not in this phase)
 
-- Anchor-based chip positioning (point at where each color actually is).
+- **Chip overlap.** Two close blobs can place chips on top of each other; a
+  de-overlap pass is a deliberate follow-up, out of scope for the anchoring change.
 - A deliberate minimum-duration "analyzing" state so a fast worker doesn't
   flash-then-instantly-reveal (roadmap Phase 4 open item).
 - Real-device pass — iOS Safari first (Phase 6). `getUserMedia` + clipboard need
