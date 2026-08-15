@@ -22,4 +22,4 @@ npm install
 npm run dev
 ```
 
-_(Setup commands will apply once the Vite + React scaffold lands.)_
+Other scripts: `npm test` (Node test runner), `npm run lint` (Oxlint), `npm run build` (type-check + production build).

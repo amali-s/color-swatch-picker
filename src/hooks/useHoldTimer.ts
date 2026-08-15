@@ -17,9 +17,9 @@ interface UseHoldTimerResult {
 /**
  * Hold-to-capture state machine: idle → holding → captured.
  *
- * Ported from `color-picker/src/hooks/useHoldTimer.ts` (the engine app) so the
- * lens-swatch UI reuses the same, already-tested state machine rather than
- * reimplementing it. The one addition for Phase 4 is `onTick`: an optional
+ * Adapted from the retired color-picker prototype's hold-timer so this app
+ * reuses the same, already-tested state machine rather than reimplementing it.
+ * The one addition for Phase 4 is `onTick`: an optional
  * per-frame callback `(progress, dtMs)` invoked while holding, so the capture
  * screen can paint the pulse accelerando + progress ring imperatively off the
  * same requestAnimationFrame loop (no second timer, no 60fps React churn for
