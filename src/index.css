@@ -30,6 +30,8 @@
   /* Type */
   --font-heading: 'Rethink Sans', system-ui, sans-serif;
   --font-body: 'Spectral', Georgia, serif;
+  /* Fixed-width glyphs for the hex-scramble loading reels (matrix counter). */
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 
   /* Motion (Phase 4 — mirrors src/capture/motion.ts) */
   --dur-base: 220ms;

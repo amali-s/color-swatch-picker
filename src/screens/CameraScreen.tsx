@@ -448,9 +448,12 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
         {showTarget && (
           <>
             <CaptureTarget label={targetLabel} glowRef={glowRef} ringRef={ringRef} />
-            {/* Low-emphasis loading skeletons occupying the reveal slots while
-                there's no blob data yet (idle + hold + the analysis beat). */}
-            <SkeletonChips animate={!reduced} />
+            {/* Loading placeholders occupying the reveal slots before blob data
+                exists. Still em-dash slots only while idle; the hex-scramble
+                counter rolls as soon as a hold begins ("Swatching") and through
+                the post-capture "Reading colors" beat — i.e. whenever the state
+                is no longer idle. */}
+            <SkeletonChips animate={!reduced} scanning={hold.state !== 'idle'} />
           </>
         )}
 

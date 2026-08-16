@@ -69,7 +69,7 @@ A note on accuracy: exact browser API names below (`getUserMedia`, `getImageData
 - Deciding single-frame capture vs. multi-frame averaging (averaging gives steadier results but is a stretch goal, not core)
 
 **Designer input needed from you:**
-- ~~A decision on what story the 3–5s hold is telling the user...~~ **Resolved:** single-frame capture, fired at hold completion — not multi-frame averaging. Full interaction narrative and the resulting technical decisions (capture timing, blob-based tooltip positioning, sampling, honest color-value framing) are in [phase3-capture-reveal-decisions.md](phase3-capture-reveal-decisions.md).
+- A decision on what story the 3–5s hold is telling the user: "hold still so I can get a clean shot" vs. "I'm sampling across time for stability." This is a product/UX call, not just an engineering one, and it changes what the hold-progress UI should communicate in Phase 4.
 
 ---
 
@@ -82,9 +82,8 @@ A note on accuracy: exact browser API names below (`getUserMedia`, `getImageData
 - Respecting `prefers-reduced-motion` for accessibility
 
 **Designer input needed from you (heaviest design phase):**
-- ~~Idle / hold-in-progress states~~ **Resolved:** idle = translucent container, "Hold to swatch," empty tooltip stack bottom-right; holding = message eases to "Swatching," tooltips show loading state. See [phase3-capture-reveal-decisions.md](phase3-capture-reveal-decisions.md).
-- Figma mockups/prototype still needed for: capture confirmation visual (snap, flash, other feedback beyond the described tooltip-fill).
-- Still open: concrete motion spec — timing and easing that reads as "quick and physical" rather than "slow and decorative" for this specific app (including the reveal transition itself).
+- Figma mockups/prototype for each capture state: idle camera view, hold-in-progress indicator (pick one: countdown ring, progress bar, pulse), and capture confirmation (snap, flash, other feedback).
+- A concrete motion spec: timing and easing that reads as "quick and physical" rather than "slow and decorative" for this specific app.
 - Accent color and near-black treatment applied to real mockups, not just described.
 
 ---
@@ -99,17 +98,20 @@ A note on accuracy: exact browser API names below (`getUserMedia`, `getImageData
 - Layout for the swatch + hex code + copy button cluster
 
 **Designer input needed from you:**
-- ~~Decision on showing swatches over the frozen frame vs. separately~~ **Resolved:** swatches are positioned via tooltip anchored to each color's largest continuous blob location — implements the "over the frozen frame" treatment. Color value itself is still communicated as an aggregate ("this color, aggregated across everywhere it appears"), not a single-spot reading. See [phase3-capture-reveal-decisions.md](phase3-capture-reveal-decisions.md).
-- Figma mockups still needed for: hex code typography, copy-confirmation micro-interaction (checkmark, label swap, etc.), and the save-icon treatment.
+- Figma mockups for the reveal screen: swatch layout, hex code typography, copy-confirmation micro-interaction (checkmark, label swap, etc.).
+- A decision and visual treatment for showing the 3 swatches over the frozen captured frame (recommended, since it makes the "what I saw → what I got" connection visible and turns the algorithm's imperfection into an honest, designed moment) vs. showing them separately.
 - Error/empty states: camera permission denied, clipboard unsupported, no camera detected.
 
 ---
 
-## Phase 6 — Real-Device Testing & Iteration
+## Phase 6 — Deploy for Testing + Real-Device Testing & Iteration
 
-**Goal:** Test on actual target phones — iOS Safari first, Android Chrome second, in-app browser contexts if relevant to your audience — and tune hold duration, extraction accuracy, and interaction feel against real handling, not desktop assumptions.
+**Goal:** Get the build onto an HTTPS URL, then test on actual target phones — iOS Safari first, Android Chrome second, in-app browser contexts if relevant to your audience — and tune hold duration, extraction accuracy, and interaction feel against real handling, not desktop assumptions.
+
+**Why deployment moved here (was Phase 7):** `getUserMedia` and the Clipboard API require a secure context (HTTPS), so real-device testing can't run over plain LAN. Deploying to Vercel now — rather than waiting for ship — is the cleanest way to get a stable HTTPS URL onto your phone: Vercel serves HTTPS by default and generates a fresh preview URL on every push, so each testing iteration is one `git push` away. (A tunnel such as cloudflared/ngrok is the alternative, but a real preview URL is steadier for handheld testing.) This is a *testing* deploy, not the final ship — Phase 7 keeps the production sign-off. Note the repo carries two Vite apps; the deploy target is `lens-swatch/` (the Phase-4 UI with the Phase-5-integrated extraction engine), not `color-picker/` (the isolated engine app).
 
 **Skills/knowledge needed:**
+- Deploying a Vite app that lives in a repo subdirectory to Vercel (set the project's Root Directory to `lens-swatch/`; Vite framework preset)
 - Remote debugging (Safari Web Inspector / Chrome DevTools over USB)
 - Cross-browser `getUserMedia` quirks
 - Mobile performance tuning for the clustering step
@@ -122,10 +124,10 @@ A note on accuracy: exact browser API names below (`getUserMedia`, `getImageData
 
 ## Phase 7 — Polish, Known Limitations, and Ship
 
-**Goal:** Final visual polish, an honest written note on the RGB-vs-perceptual-color limitation, deployment to a static host (Vercel, Netlify, or GitHub Pages all serve HTTPS by default, which camera/clipboard require), and ship.
+**Goal:** Final visual polish, an honest written note on the RGB-vs-perceptual-color limitation, and ship. Deployment itself moved to Phase 6, so by this point the app is already live on Vercel — this phase is the final production sign-off: promoting the tested build to production and confirming the shipped version is the one that passed real-device testing.
 
 **Skills/knowledge needed:**
-- Basic static-site deployment
+- Promoting a Vercel preview to production / final deploy config
 - Final QA pass across target devices
 
 **Designer input needed from you:**
@@ -134,6 +136,40 @@ A note on accuracy: exact browser API names below (`getUserMedia`, `getImageData
 
 ---
 
+## Design Polish Backlog — post-audit to-dos (2026-08-16)
+
+Captured from a senior UI/motion design pass over the current build. These are craft + accessibility refinements sitting on top of a core flow and motion system that already work — most feed Phase 6 (real-device tuning) and Phase 7 (final polish). File paths are relative to the repo root. Check items off as they land.
+
+### P1 — legibility & layout bugs (do first)
+
+- [ ] **Fix the reveal-hex contrast.** `FloatingChip` renders the detected hex in `--text-tertiary` (#827a64) on the cream chip — roughly 4.05:1 (computed, approximate), just under the WCAG AA 4.5:1 bar for normal text — while the saved-list row (`SwatchRow`) shows the same hex in `--text-primary` (#1b2323). Move the reveal hex to `--text-secondary` (#59554b, ~7:1 computed) and/or a heavier weight so the actual payload is legible where it matters most. → `src/components/FloatingChip.tsx`
+- [ ] **Fix the "Hold to swatch" ↔ swatch-container overlap.** The empty swatch pills are bottom-anchored (`.skeleton-chips { bottom: 72px }`, ~172px tall stack) while the capture card is pinned mid-screen (`.capture-card { top: 244px; height: 114px }` → its bottom edge sits at 358px). On shorter viewports the rising pills collide with the card. Push the "Hold to swatch" card higher and add clearance so the two never touch — lift `.capture-card` (smaller `top`) and/or drop the skeleton stack, leaving a deliberate gap between them. → `src/App.css`
+
+### P2 — data typography
+
+- [ ] **Give hex a legible, precise type treatment.** Spectral 300 (thin serif) makes 0/O and 8/B ambiguous for alphanumeric data. Use a monospace/tabular face or a heavier weight for hex values specifically — it also pairs naturally with the new loading counter "settling" into a monospace value. Apply to `FloatingChip` and, for consistency, `SwatchRow`. → `src/components/FloatingChip.tsx`, `src/components/SwatchRow.tsx`
+
+### P3 — motion & system consistency
+
+- [ ] **Make loading morph into reveal.** Loaders stack bottom-left; chips reveal at anchor / `CHIP_LAYOUT` slots — so it reads as a jump, not the morph Phase 3 described. Seat the skeleton/scramble pills at the fallback `CHIP_LAYOUT` positions so loading → reveal is one continuous transform (now that the counter visually promises "this becomes the hex, here"). → `src/components/SkeletonChips.tsx`, `src/screens/CameraScreen.tsx`, `src/App.css`
+- [ ] **Consolidate the two blues.** `--dark-blue` (#096694, wordmark + focus outline) and `--accent` (#0095cc, ring/glow/flash) are distinct-but-near-identical in different roles — the Phase 4 spec already flagged tokenizing the accent. Collapse to one scale (`--accent` / `--accent-strong`). Separately, confirm the cool blue is intentional in the warm-neutral world; a warmer accent may sit more naturally. → `src/index.css`, `src/App.css`, `src/capture/motion.ts`
+- [ ] **Surface the copy affordance.** Tapping a chip copies `#hex` (the locked core requirement), but only the bookmark (a stretch feature) is visible — the core action is invisible. Add a subtle copy glyph or a one-time hint on reveal. → `src/components/FloatingChip.tsx`
+
+### P4 — responsive (folds into Phase 6 real-device tuning)
+
+- [ ] **De-pin the 393×852 composition.** `.capture-card` (top:244 / height:114), `.skeleton-chips` (bottom:72), and the switch button (right/bottom:32) are absolute px from the Figma canvas and won't stay proportional across phone sizes. Move to %, safe-area insets, and flex. Worth doing together with the P1 overlap fix, since both touch the same coordinates. → `src/App.css`
+
+### Nits (verify, low effort)
+
+- [ ] **Confirm the `Label 2` tracking in Figma.** `letterSpacing:-6` is a variable artifact, already neutralized to `0` in CSS — just confirm the Figma token so it doesn't resurface on the next export. → Figma file
+- [ ] **Verify the empty-state copy.** "Swipe to open the camera" is shown, but navigation is tab buttons — confirm a swipe gesture actually exists, or reword so the copy doesn't promise a gesture that isn't wired up. → `src/screens/ListScreen.tsx`
+
+### Done (shipped this pass)
+
+- [x] **Number-scramble (matrix counter) loading state.** Swatch containers roll a six-digit hex counter (0–9 A–F) while Swatching (holding) and Reading colors, settling into the real code on reveal; idle shows still em-dash slots; reduced motion keeps em-dashes throughout. → `src/components/SkeletonChips.tsx`, `src/App.css`, `src/index.css`, `src/screens/CameraScreen.tsx`
+
+---
+
 ## Sequencing note
 
-This order deliberately front-loads risk: Phase 2 (the algorithm) and Phase 6 (real-device camera behavior) are where things are most likely to go sideways, and both surface early enough to leave room to recover. Phases 4 and 5 are where "designer who can build" gets proven — budget real time there rather than treating them as a coat of paint at the end.
+This order deliberately front-loads risk: Phase 2 (the algorithm) and Phase 6 (real-device camera behavior) are where things are most likely to go sideways, and both surface early enough to leave room to recover. Phases 4 and 5 are where "designer who can build" gets proven — budget real time there rather than treating them as a coat of paint at the end. Deployment sits in Phase 6 (not Phase 7) on purpose: real-device testing needs HTTPS, so the app goes live early as a testing surface and Phase 7 becomes the final ship sign-off rather than a first deploy.

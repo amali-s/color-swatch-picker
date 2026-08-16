@@ -292,31 +292,77 @@
   flex-shrink: 0;
 }
 
-.skeleton-chip__line {
-  height: 8px;
-  flex: 1;
-  max-width: 96px;
-  border-radius: 4px;
-  background: rgba(130, 122, 100, 0.22);
+/* ---- Number-scramble loading (matrix counter) ----
+   Each pill rolls a six-character hex "counter" (0–9 A–F) like a slot machine,
+   foreshadowing the hex code the swatch resolves to. Each reel is a duplicated
+   glyph column translated -50% on a linear loop; per-reel duration + negative
+   delay (set inline) desync the six columns into a scramble. The reels sit
+   still under prefers-reduced-motion (a static faint hex placeholder). */
+.scramble-code {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 18px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.5px;
+  user-select: none;
 }
 
-.skeleton-chips.is-animated .skeleton-chip__line {
-  background: linear-gradient(
-    90deg,
-    rgba(130, 122, 100, 0.14) 0%,
-    rgba(130, 122, 100, 0.34) 50%,
-    rgba(130, 122, 100, 0.14) 100%
-  );
-  background-size: 200% 100%;
-  animation: skeletonShimmer 1.4s ease-in-out infinite;
+.scramble-code__hash {
+  opacity: 0.5;
+  margin-right: 1px;
 }
 
-@keyframes skeletonShimmer {
-  from {
-    background-position: 200% 0;
-  }
+/* Idle / holding: still em-dash slots (no motion), quieter than the reels. */
+.scramble-code.is-empty {
+  opacity: 0.55;
+}
+
+.scramble-em {
+  display: inline-block;
+  width: 9px;
+  text-align: center;
+}
+
+/* One character cell: an 18px window masking the rolling column, with a soft
+   fade at the top/bottom edges for the reel/matrix look. */
+.scramble-reel {
+  display: inline-block;
+  width: 9px;
+  height: 18px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 32%, #000 68%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 32%, #000 68%, transparent 100%);
+}
+
+.scramble-reel__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(0);
+  will-change: transform;
+}
+
+.scramble-reel__glyph {
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.skeleton-chips.is-animated .scramble-reel__col {
+  animation-name: reelRoll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* -50% steps through exactly the first (duplicated) half → seamless wrap. */
+@keyframes reelRoll {
   to {
-    background-position: -200% 0;
+    transform: translateY(-50%);
   }
 }
 
@@ -493,7 +539,7 @@
   .capture-card__glow {
     display: none;
   }
-  .skeleton-chips.is-animated .skeleton-chip__line {
+  .skeleton-chips.is-animated .scramble-reel__col {
     animation: none;
   }
 }
