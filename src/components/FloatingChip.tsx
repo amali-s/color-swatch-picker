@@ -62,7 +62,11 @@ export default function FloatingChip({
         aria-label={copied ? `Copied #${swatch.hex}` : `Copy #${swatch.hex}`}
       >
         <span className="floating-chip__color" style={{ background: `#${swatch.hex}` }} />
-        <span className="text-label-2" style={{ color: 'var(--text-tertiary)' }}>
+        {/* Reveal hex sits on the --layer-1 (#fff8f0) chip. --text-tertiary
+            (#827a64) only clears ~4.06:1 there — under WCAG AA for normal text —
+            so use --text-secondary (#59554b, ~7.06:1), matching SwatchRow's
+            legibility. */}
+        <span className="text-label-2" style={{ color: 'var(--text-secondary)' }}>
           {copied ? 'Copied' : swatch.hex}
         </span>
       </button>

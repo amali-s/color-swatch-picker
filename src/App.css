@@ -170,6 +170,17 @@
   flex: 1;
   overflow: hidden;
   background: linear-gradient(180deg, #2a2622 0%, #1b1815 100%);
+
+  /* Shared layout coordinates for the two stacked overlays (capture card at the
+     top, skeleton stack at the bottom). Kept here — the common positioned
+     ancestor of both — as the single source of truth so the collision guard on
+     .skeleton-chips stays correct if these change. The card top is a % of the
+     viewport (not a hardcoded 393x852 px offset) so the composition scales with
+     phone height; the stack height mirrors 3 * 36px chips + 2 * 32px gaps. */
+  --capture-card-top: 32%; /* ~= the old 244px at the 852-canvas reference */
+  --capture-card-height: 114px;
+  --skeleton-stack-height: 172px; /* 3 * 36px + 2 * 32px */
+  --stack-gap-min: 24px; /* deliberate gap held between card and stack */
 }
 
 .floating-chip {
@@ -266,7 +277,24 @@
 .skeleton-chips {
   position: absolute;
   left: 32px;
-  bottom: 72px;
+  /* De-pinned from the old fixed 72px. Rests 72px off the bottom on tall
+     viewports (matching the design), but on short phones slides toward the
+     bottom edge so its top never rises within --stack-gap-min of the capture
+     card above it. The cap = viewport height minus everything stacked above the
+     gap; min() picks whichever is lower (further from the card), max() keeps the
+     stack on-screen on absurdly short viewports. No env(safe-area-inset-bottom)
+     is needed here: the opaque .bottom-nav below the viewport already carries
+     the home-indicator inset, so the viewport's bottom edge is device-safe. */
+  bottom: max(
+    12px,
+    min(
+      72px,
+      calc(
+        100% - var(--capture-card-top) - var(--capture-card-height) -
+          var(--skeleton-stack-height) - var(--stack-gap-min)
+      )
+    )
+  );
   display: flex;
   flex-direction: column;
   gap: 32px;
@@ -418,13 +446,15 @@
   display: none;
 }
 
-/* "Hold to swatch" / "Swatching" target card. */
+/* "Hold to swatch" / "Swatching" target card. Sits proportionally in the upper
+   third (top is a % of the viewport, not a pinned 244px), so it rides up on
+   shorter phones instead of colliding with the skeleton stack below. */
 .capture-card {
   position: absolute;
   left: 32px;
   right: 32px;
-  top: 244px;
-  height: 114px;
+  top: var(--capture-card-top);
+  height: var(--capture-card-height);
   border-radius: 8px;
   background: rgba(255, 248, 240, 0.34);
   border: 1px solid rgba(255, 248, 240, 0.55);
