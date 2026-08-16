@@ -3,6 +3,7 @@ import BottomNav from '../components/BottomNav';
 import CaptureTarget from '../components/CaptureTarget';
 import FloatingChip from '../components/FloatingChip';
 import SkeletonChips from '../components/SkeletonChips';
+import SwitchCameraIcon from '../components/SwitchCameraIcon';
 import { copyText } from '../lib/clipboard';
 import { useCamera } from '../hooks/useCamera';
 import { useColorExtraction } from '../hooks/useColorExtraction';
@@ -69,7 +70,13 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
  */
 export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Props) {
   const reduced = usePrefersReducedMotion();
-  const { videoRef, status: cameraStatus, error: cameraError } = useCamera();
+  const {
+    videoRef,
+    status: cameraStatus,
+    error: cameraError,
+    canSwitch,
+    switchCamera,
+  } = useCamera();
   const {
     extract,
     result,
@@ -332,6 +339,16 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     resetVisuals();
   }, [hold, resetVisuals]);
 
+  // Flipping the camera mid-hold would swatch the wrong feed, so bail out of any
+  // in-progress hold (and clear its ring/glow) before requesting the new camera.
+  const onSwitchCamera = useCallback(() => {
+    if (hold.state === 'holding') {
+      hold.cancel();
+      resetVisuals();
+    }
+    switchCamera();
+  }, [hold, resetVisuals, switchCamera]);
+
   const onRetake = useCallback(() => {
     clearTimers();
     hold.reset();
@@ -477,6 +494,21 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
         )}
 
         <div ref={flashRef} className="capture-flash" aria-hidden="true" />
+
+        {/* Front/rear toggle — only on multi-camera devices, and only while a
+            live feed is showing. Disabled once a swatch is on screen. */}
+        {canSwitch && cameraReady && (
+          <button
+            type="button"
+            className="switch-camera-btn"
+            aria-label="Switch camera"
+            disabled={isCaptured}
+            onClick={onSwitchCamera}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <SwitchCameraIcon disabled={isCaptured} />
+          </button>
+        )}
       </div>
 
       {toast && (

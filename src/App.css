@@ -233,22 +233,49 @@
   border-radius: 6px;
 }
 
+/* Front/rear camera toggle floating in the viewport's bottom-right corner. The
+   translucent cream disc matches the skeleton pill fill; the glyph supplies its
+   own enabled/disabled colour. */
+.switch-camera-btn {
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 248, 240, 0.66);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(27, 35, 35, 0.18);
+}
+
+.switch-camera-btn:focus-visible {
+  outline: 2px solid var(--dark-blue);
+  outline-offset: 2px;
+}
+
+.switch-camera-btn:disabled {
+  cursor: default;
+  pointer-events: none;
+}
+
 /* ---- Idle/hold loading skeletons (14-67 / 14-121) ----
-   Three faint pills stacked bottom-right, holding the reveal slots before any
+   Three faint pills stacked bottom-left, holding the reveal slots before any
    blob data exists. */
 .skeleton-chips {
   position: absolute;
-  right: 24px;
-  bottom: 40px;
+  left: 32px;
+  bottom: 72px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 32px;
   pointer-events: none;
 }
 
 .skeleton-chip {
-  width: 172px;
-  height: 40px;
+  width: 175px;
+  height: 36px;
   border-radius: 8px;
   background: rgba(255, 248, 240, 0.66);
   display: flex;
