@@ -466,23 +466,37 @@
   overflow: hidden;
 }
 
-/* Pulse wash — opacity/scale/tint are painted imperatively per frame. */
+/* Cream wash — invisible at rest, CSS heartbeat while `.is-pulsing`. The class
+   is toggled from CameraScreen for the duration of the hold. */
 .capture-card__glow {
   position: absolute;
   inset: 0;
   opacity: 0;
   pointer-events: none;
-  transform-origin: 50% 50%;
-  background: rgba(255, 248, 240, 0.9);
+  background: #fff1e2;
 }
 
-/* Determinate progress ring tracing the card border. */
-.capture-ring {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
+@keyframes heartbeat {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  12% {
+    opacity: 0.5;
+  } /* lub */
+  24% {
+    opacity: 0.28;
+  }
+  36% {
+    opacity: 0.46;
+  } /* dub */
+  50% {
+    opacity: 0.2;
+  } /* rest through to 100% */
+}
+
+.capture-card__glow.is-pulsing {
+  animation: heartbeat 1.95s ease-in-out infinite;
 }
 
 .capture-card__label {
@@ -558,9 +572,9 @@
   box-shadow: 0 4px 16px rgba(27, 35, 35, 0.28);
 }
 
-/* Reduced motion: drop the pulse/flash/reveal motion. The determinate ring
-   still fills (no vestibular risk) and chips appear in place. The JS layer
-   also honors prefers-reduced-motion; this is the CSS belt-and-suspenders. */
+/* Reduced motion: drop the heartbeat/flash/reveal motion — the glow is hidden
+   outright (no pulse) and chips appear in place. The JS layer also honors
+   prefers-reduced-motion; this is the CSS belt-and-suspenders. */
 @media (prefers-reduced-motion: reduce) {
   .floating-chip--reveal.floating-chip--center,
   .floating-chip--reveal.floating-chip--left {

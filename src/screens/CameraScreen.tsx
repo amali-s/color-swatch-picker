@@ -16,10 +16,6 @@ import {
   EASE_SNAP,
   HOLD_THRESHOLD_MS,
   STAGGER,
-  beatInterval,
-  paintGlow,
-  paintRing,
-  pulseShape,
 } from '../capture/motion';
 import type { Swatch } from '../types';
 import type { View } from '../App';
@@ -63,8 +59,8 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
  * The capture moment (Phase 4) wired to the real extraction pipeline (Phase 5
  * integration). `useCamera` drives a live viewfinder; on hold-complete the
  * current video frame is grabbed to a canvas and handed to `useColorExtraction`
- * (k-means + blob detection in a Web Worker). The Phase 4 choreography — pulse,
- * determinate ring, capture flash + freeze punch, staggered reveal — is
+ * (k-means + blob detection in a Web Worker). The Phase 4 choreography — cream
+ * heartbeat pulse, capture flash + freeze punch, staggered reveal — is
  * unchanged; the reveal is now gated on real extraction completing rather than a
  * fixed delay, and the detected chips carry the actual dominant colors.
  */
@@ -100,13 +96,11 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
-  const ringRef = useRef<SVGRectElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
   // Root elements of the revealed chips, kept so a useLayoutEffect can measure
   // them before paint.
   const chipRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  const beatPhaseRef = useRef(0);
   const accentRef = useRef('#0095cc');
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -203,24 +197,6 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     [after],
   );
 
-  // Per-frame: advance the pulse accelerando and paint both progress layers.
-  const onTick = useCallback(
-    (progress: number, dt: number) => {
-      const ring = ringRef.current;
-      if (ring) paintRing(ring, progress, accentRef.current);
-
-      const glow = glowRef.current;
-      if (!glow) return;
-      if (reduced) {
-        glow.style.opacity = '0';
-        return;
-      }
-      beatPhaseRef.current += dt / beatInterval(progress);
-      paintGlow(glow, progress, pulseShape(beatPhaseRef.current), accentRef.current);
-    },
-    [reduced],
-  );
-
   // Grab the current video frame and hand its pixels to the extraction worker.
   // Runs synchronously inside the hold timer's completion tick, while <video> is
   // still mounted and playing. Returns false if no frame could be read.
@@ -254,7 +230,7 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     }
 
     const glow = glowRef.current;
-    if (glow) glow.style.opacity = '0';
+    if (glow) glow.classList.remove('is-pulsing');
 
     const flash = flashRef.current;
     const viewport = viewportRef.current;
@@ -291,7 +267,15 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     if (!grabFrame()) setGrabFailed(true);
   }, [after, reduced, grabFrame]);
 
-  const hold = useHoldTimer(HOLD_THRESHOLD_MS, capture, onTick);
+  const hold = useHoldTimer(HOLD_THRESHOLD_MS, capture);
+
+  // Run the cream heartbeat only while holding; the animation itself is CSS
+  // (`.capture-card__glow.is-pulsing`). Idle/captured show no pulse.
+  useEffect(() => {
+    const glow = glowRef.current;
+    if (!glow) return;
+    glow.classList.toggle('is-pulsing', hold.state === 'holding');
+  }, [hold.state]);
 
   // Reveal the swatches once extraction lands. A short beat lets the capture
   // flash breathe first; under reduced motion it reveals immediately.
@@ -326,11 +310,8 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
   }, [detected, revealed]);
 
   const resetVisuals = useCallback(() => {
-    beatPhaseRef.current = 0;
-    const ring = ringRef.current;
-    if (ring) paintRing(ring, 0, accentRef.current);
     const glow = glowRef.current;
-    if (glow) glow.style.opacity = '0';
+    if (glow) glow.classList.remove('is-pulsing');
   }, []);
 
   const onHoldEnd = useCallback(() => {
@@ -447,7 +428,7 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
 
         {showTarget && (
           <>
-            <CaptureTarget label={targetLabel} glowRef={glowRef} ringRef={ringRef} />
+            <CaptureTarget label={targetLabel} glowRef={glowRef} />
             {/* Loading placeholders occupying the reveal slots before blob data
                 exists. Still em-dash slots only while idle; the hex-scramble
                 counter rolls as soon as a hold begins ("Swatching") and through
