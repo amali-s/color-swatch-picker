@@ -39,6 +39,7 @@
   --dur-base: 220ms;
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-snap-in: cubic-bezier(0.64, 0, 0.78, 0);
+  --ease-snap-overshoot: cubic-bezier(0.22, 1.35, 0.36, 1);
 
   color-scheme: light;
   font-synthesis: none;

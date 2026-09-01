@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import ListScreen from './screens/ListScreen';
 import CameraScreen from './screens/CameraScreen';
+import BottomNav from './components/BottomNav';
 import { useSavedSwatches } from './hooks/useSavedSwatches';
 import './App.css';
 
@@ -13,20 +14,18 @@ function App() {
   return (
     <div className="phone-shell">
       <div className="phone-screen">
-        {view === 'list' ? (
-          <ListScreen
-            swatches={saved}
-            onRemove={remove}
-            onOpenCamera={() => setView('camera')}
-            onNavChange={setView}
-          />
-        ) : (
-          <CameraScreen
-            savedIds={savedIds}
-            onToggleSave={toggle}
-            onNavChange={setView}
-          />
-        )}
+        <div className="phone-screen__body">
+          {view === 'list' ? (
+            <ListScreen
+              swatches={saved}
+              onRemove={remove}
+              onOpenCamera={() => setView('camera')}
+            />
+          ) : (
+            <CameraScreen savedIds={savedIds} onToggleSave={toggle} />
+          )}
+        </div>
+        <BottomNav view={view} onChange={setView} />
       </div>
     </div>
   );

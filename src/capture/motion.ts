@@ -27,3 +27,8 @@ export const ANALYZE_FLOOR_MS = 280;
 export const EASE_SNAP = 'cubic-bezier(0.22, 1, 0.36, 1)';
 /** Inverse of EASE_SNAP — ease-in for discrete departures (Copied out, unsave). */
 export const EASE_SNAP_IN = 'cubic-bezier(0.64, 0, 0.78, 0)';
+/**
+ * Snap family with a short overshoot — nav pill spring. Same control-x as
+ * EASE_SNAP; the raised y lets translateX travel ~10% past the slot then settle.
+ */
+export const EASE_SNAP_OVERSHOOT = 'cubic-bezier(0.22, 1.35, 0.36, 1)';

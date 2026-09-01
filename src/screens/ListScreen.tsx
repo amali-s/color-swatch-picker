@@ -2,24 +2,21 @@ import { useState } from 'react';
 import Header from '../components/Header';
 import PrimaryButton from '../components/PrimaryButton';
 import SwatchRow from '../components/SwatchRow';
-import BottomNav from '../components/BottomNav';
 import type { Swatch } from '../types';
-import type { View } from '../App';
 
 interface Props {
   swatches: Swatch[];
   onRemove: (id: string) => void;
   onOpenCamera: () => void;
-  onNavChange: (view: View) => void;
 }
 
 /**
  * The Swatches tab — one screen in two data states: the "Empty state" (1:2)
  * card when nothing is saved, and the "Filled" (31:583) saved-swatches list
- * once at least one color has been captured. The bottom nav is persistent
- * across both.
+ * once at least one color has been captured. The bottom nav lives in App so
+ * the active pill can slide without remounting.
  */
-export default function ListScreen({ swatches, onRemove, onOpenCamera, onNavChange }: Props) {
+export default function ListScreen({ swatches, onRemove, onOpenCamera }: Props) {
   const isEmpty = swatches.length === 0;
   const [announcement, setAnnouncement] = useState('');
 
@@ -67,8 +64,6 @@ export default function ListScreen({ swatches, onRemove, onOpenCamera, onNavChan
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
-
-      <BottomNav view="list" onChange={onNavChange} />
     </div>
   );
 }

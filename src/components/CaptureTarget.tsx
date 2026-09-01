@@ -3,7 +3,7 @@ import { DUR_FLASH } from '../capture/motion';
 import type { RefObject } from 'react';
 
 interface Props {
-  /** "Hold to swatch" when idle, "Swatching" while holding. */
+  /** "Hold to swatch" | "Swatching" | "Reading colors". */
   label: string;
   /** The pulse-wash element, toggled between idle and the CSS heartbeat. */
   glowRef: RefObject<HTMLDivElement | null>;

@@ -15,8 +15,8 @@ interface Props {
 
 /**
  * A saved-swatch row with two distinct, keyboard-operable hit areas:
- *   - the row body (color square + hex) copies `#HEX` and fades in "Copied"
- *     beside the hex for ~1.2s (hex never leaves), and
+ *   - the row body (color square + hex) copies `#HEX` and crossfades the
+ *     hex to "Copied" for ~1.2s (width stays the hex's), and
  *   - a filled bookmark at the right edge, revealed on hover/focus (2-172),
  *     un-saves the color.
  * The bookmark stays in the tab order (revealed via `:focus-within`) so it's

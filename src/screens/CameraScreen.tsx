@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import BottomNav from '../components/BottomNav';
 import CaptureTarget from '../components/CaptureTarget';
 import CaptureChip from '../components/FloatingChip';
 import SwitchCameraIcon from '../components/SwitchCameraIcon';
@@ -21,13 +20,11 @@ import {
 } from '../capture/motion';
 import type { ChipAnchor, ChipPhase } from '../components/FloatingChip';
 import type { Swatch } from '../types';
-import type { View } from '../App';
 
 interface Props {
   savedIds: Set<string>;
   /** Add if not saved, remove if saved (the chip bookmark toggle). */
   onToggleSave: (swatch: Swatch) => void;
-  onNavChange: (view: View) => void;
 }
 
 interface ChipLayout {
@@ -71,7 +68,7 @@ const RING_FULL = '0';
  * before the three loader pills morph into hex chips. Retake plays that
  * sequence backward.
  */
-export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Props) {
+export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   const reduced = usePrefersReducedMotion();
   const {
     videoRef,
@@ -447,7 +444,12 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
       extractStatus === 'error' ||
       (extractStatus === 'done' && detected.length === 0));
   const showTarget = cameraReady && !failed;
-  const targetLabel = hold.state === 'idle' ? 'Hold to swatch' : 'Swatching';
+  const targetLabel =
+    hold.state === 'holding'
+      ? 'Swatching'
+      : hold.state === 'captured' && story !== 'returning'
+        ? 'Reading colors'
+        : 'Hold to swatch';
 
   const inputLocked = story === 'returning' || story === 'revealing';
 
@@ -596,8 +598,6 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
           </div>
         </div>
       )}
-
-      <BottomNav view="camera" onChange={onNavChange} />
     </div>
   );
 }
