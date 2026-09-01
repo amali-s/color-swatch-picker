@@ -1,19 +1,22 @@
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
+import { DUR_BASE, EASE_SNAP } from '../capture/motion';
 
 interface Props {
+  /** True while holding / reading: six hex reels roll (if motion is allowed). */
+  scanning: boolean;
+  /**
+   * When set, freeze the CSS loops and decelerate each reel onto that hex
+   * glyph (six characters, no hash). Not a string swap.
+   */
+  settleHex?: string | null;
   /** Motion allowed (false under prefers-reduced-motion). */
   animate: boolean;
-  /**
-   * True once the state leaves idle — while holding ("Swatching") and through
-   * the post-capture "Reading colors" beat: the six hex reels roll. Idle
-   * (false) shows still em-dash slots.
-   */
-  scanning: boolean;
+  /** Per-chip seed so the three pills don't roll in lockstep. */
+  chipIndex: number;
 }
 
 const HEX = '0123456789ABCDEF';
-const CELLS = 6; // hex characters shown per code
-const CHIPS = 3; // three stacked reveal slots
+const CELLS = 6;
 
 /**
  * Deterministic per-reel shuffle of the 16 hex glyphs, so each reel rolls its
@@ -31,74 +34,114 @@ function shuffledHex(seed: number): string[] {
   return arr;
 }
 
-/**
- * The three faint stacked placeholders in the camera idle/hold/reading states
- * (14-67, 14-121): low-emphasis loaders that occupy the reveal slots before any
- * blob data exists.
- *
- * Two modes:
- *   - Idle (`scanning === false`): each pill sits still with six em-dash slots
- *     — a calm "nothing captured yet" placeholder.
- *   - Swatching / Reading colors (`scanning === true`, motion allowed): each
- *     pill rolls a six-character hex "counter" — six vertical reels of 0–9 A–F
- *     scrolling like a slot machine / matrix counter — foreshadowing the hex
- *     code the swatch resolves to on reveal. Pure-CSS loops (a duplicated glyph
- *     column translated -50% linearly), each with its own duration + negative
- *     delay so the six columns desync.
- *
- * Decorative, so hidden from assistive tech. Under reduced motion the reels
- * don't roll — the reading beat shows the same still em-dash slots.
- */
-export default function SkeletonChips({ animate, scanning }: Props) {
-  const rolling = scanning && animate;
+function readTranslateY(el: HTMLElement): number {
+  const computed = getComputedStyle(el).transform;
+  if (!computed || computed === 'none') return 0;
+  return new DOMMatrix(computed).m42;
+}
 
-  const chips = useMemo(
+/**
+ * Hex scramble guts shared by the capture chips. Idle shows still em-dashes;
+ * scanning rolls six linear reels; settle decelerates onto the real glyphs
+ * with EASE_SNAP. Decorative, so hidden from assistive tech.
+ */
+export default function ScrambleCode({ scanning, settleHex, animate, chipIndex }: Props) {
+  // Keep the CSS loop class on through settle so useLayoutEffect can read the
+  // live transform before freezing it. Inline `animation: none` then wins.
+  const rolling = scanning && animate;
+  const colRefs = useRef<(HTMLSpanElement | null)[]>([]);
+
+  const reels = useMemo(
     () =>
-      Array.from({ length: CHIPS }, (_, chip) =>
-        Array.from({ length: CELLS }, (_, cell) => {
-          const glyphs = shuffledHex(chip * 97 + cell * 13);
-          const seq = [...glyphs, ...glyphs]; // duplicated → seamless -50% loop
-          const dur = 0.72 + ((chip * CELLS + cell) % 5) * 0.14; // 0.72–1.28s
-          const delay = -(((chip + cell) % 4) * 0.22); // desync the columns
-          return { seq, dur, delay };
-        }),
-      ),
-    [],
+      Array.from({ length: CELLS }, (_, cell) => {
+        const glyphs = shuffledHex(chipIndex * 97 + cell * 13);
+        const seq = [...glyphs, ...glyphs];
+        const dur = 0.72 + ((chipIndex * CELLS + cell) % 5) * 0.14;
+        const delay = -(((chipIndex + cell) % 4) * 0.22);
+        return { glyphs, seq, dur, delay };
+      }),
+    [chipIndex],
   );
 
+  useLayoutEffect(() => {
+    if (!settleHex || !animate) return;
+    const hex = settleHex.toUpperCase().slice(0, CELLS);
+    const cleanups: Array<() => void> = [];
+
+    reels.forEach((reel, j) => {
+      const col = colRefs.current[j];
+      if (!col) return;
+      const target = hex[j];
+      if (!target) return;
+
+      const glyphH = (col.firstElementChild as HTMLElement | null)?.offsetHeight ?? 18;
+      const cycle = reel.glyphs.length * glyphH;
+      const currentY = readTranslateY(col);
+
+      col.style.animation = 'none';
+      col.style.transition = 'none';
+      col.style.transform = `translateY(${currentY}px)`;
+
+      const idx = reel.glyphs.indexOf(target);
+      if (idx < 0) return;
+
+      let yNorm = currentY % cycle;
+      if (yNorm > 0) yNorm -= cycle;
+
+      let targetY = -idx * glyphH;
+      while (targetY > yNorm + 0.5) targetY -= cycle;
+      if (Math.abs(targetY - yNorm) < 1) targetY -= cycle;
+
+      const frame = requestAnimationFrame(() => {
+        col.style.transition = `transform ${DUR_BASE}ms ${EASE_SNAP}`;
+        col.style.transform = `translateY(${targetY}px)`;
+      });
+      cleanups.push(() => cancelAnimationFrame(frame));
+    });
+
+    return () => {
+      cleanups.forEach((fn) => fn());
+    };
+  }, [settleHex, animate, reels]);
+
   return (
-    <div className={`skeleton-chips${rolling ? ' is-animated' : ''}`} aria-hidden="true">
-      {chips.map((reels, i) => (
-        <div className="skeleton-chip" key={i}>
-          <span className="skeleton-chip__square" />
-          <span className={`scramble-code${rolling ? '' : ' is-empty'}`}>
-            <span className="scramble-code__hash">#</span>
-            {rolling
-              ? reels.map((reel, j) => (
-                  <span className="scramble-reel" key={j}>
-                    <span
-                      className="scramble-reel__col"
-                      style={{
+    <span
+      className={`scramble-code${rolling ? ' is-rolling' : ''}${
+        scanning || settleHex ? '' : ' is-empty'
+      }`}
+      aria-hidden="true"
+    >
+      <span className="scramble-code__hash">#</span>
+      {rolling || settleHex
+        ? reels.map((reel, j) => (
+            <span className="scramble-reel" key={j}>
+              <span
+                ref={(el) => {
+                  colRefs.current[j] = el;
+                }}
+                className="scramble-reel__col"
+                style={
+                  rolling
+                    ? {
                         animationDuration: `${reel.dur}s`,
                         animationDelay: `${reel.delay}s`,
-                      }}
-                    >
-                      {reel.seq.map((g, k) => (
-                        <span className="scramble-reel__glyph" key={k}>
-                          {g}
-                        </span>
-                      ))}
-                    </span>
-                  </span>
-                ))
-              : Array.from({ length: CELLS }, (_, j) => (
-                  <span className="scramble-em" key={j}>
-                    —
+                      }
+                    : undefined
+                }
+              >
+                {reel.seq.map((g, k) => (
+                  <span className="scramble-reel__glyph" key={k}>
+                    {g}
                   </span>
                 ))}
-          </span>
-        </div>
-      ))}
-    </div>
+              </span>
+            </span>
+          ))
+        : Array.from({ length: CELLS }, (_, j) => (
+            <span className="scramble-em" key={j}>
+              —
+            </span>
+          ))}
+    </span>
   );
 }

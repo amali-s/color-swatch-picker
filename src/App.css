@@ -171,47 +171,68 @@
   overflow: hidden;
   background: linear-gradient(180deg, #2a2622 0%, #1b1815 100%);
 
-  /* Shared layout coordinates for the two stacked overlays (capture card at the
-     top, skeleton stack at the bottom). Kept here — the common positioned
-     ancestor of both — as the single source of truth so the collision guard on
-     .skeleton-chips stays correct if these change. The card top is a % of the
-     viewport (not a hardcoded 393x852 px offset) so the composition scales with
-     phone height; the stack height mirrors 3 * 36px chips + 2 * 32px gaps. */
   --capture-card-top: 32%; /* ~= the old 244px at the 852-canvas reference */
   --capture-card-height: 114px;
-  --skeleton-stack-height: 172px; /* 3 * 36px + 2 * 32px */
-  --stack-gap-min: 24px; /* deliberate gap held between card and stack */
+  --chip-loader-height: 36px;
+  --chip-clearance: 48px; /* air between the card and the nearest pill */
+  --chip-stack-gap: 32px;
+
+  /* Idle / null-anchor slots. The capture card is full-width, so a pill at
+     ~43% always sits on it. Keep two in the space above the card and one
+     well below. `top` is the chip center (matching the translate offset). */
+  --chip-0-left: 50%;
+  --chip-0-top: calc(var(--capture-card-top) * 0.28);
+  --chip-1-left: 32px;
+  --chip-1-top: calc(
+    var(--chip-0-top) + var(--chip-loader-height) + var(--chip-stack-gap)
+  );
+  --chip-2-left: 50%;
+  --chip-2-top: max(
+    78%,
+    calc(
+      var(--capture-card-top) + var(--capture-card-height) + var(--chip-clearance) +
+        var(--chip-loader-height) / 2
+    )
+  );
 }
 
-.floating-chip {
+.capture-chip {
   position: absolute;
-  background: var(--layer-1);
-  border-radius: 8px;
-  padding: 8px;
   display: flex;
   align-items: center;
   gap: 12px;
+  border-radius: 8px;
+  z-index: 2;
+}
+
+/* Independent of `transform`, so FLIP can animate transform without fighting
+   the slot/anchor offset. */
+.capture-chip--center {
+  translate: -50% -50%;
+}
+.capture-chip--left {
+  translate: 0 -50%;
+}
+
+.capture-chip--loader {
+  width: 175px;
+  height: var(--chip-loader-height, 36px);
+  padding: 0 12px;
+  background: rgba(255, 248, 240, 0.66);
+}
+
+.capture-chip--swatch {
   min-width: 150px;
+  padding: 8px;
+  background: var(--layer-1);
   box-shadow: 0 4px 16px rgba(27, 35, 35, 0.18);
 }
 
-/* Anchor modifiers carry the resting transform so the reveal keyframes
-   (which must animate the same transform) have a target to land on. */
-.floating-chip--center {
-  transform: translate(-50%, -50%);
-}
-.floating-chip--left {
-  transform: translate(0, -50%);
+.capture-chip:not(.is-interactive) {
+  pointer-events: none;
 }
 
-.floating-chip--reveal.floating-chip--center {
-  animation: chipIn var(--dur-base) var(--ease-snap) both;
-}
-.floating-chip--reveal.floating-chip--left {
-  animation: chipInLeft var(--dur-base) var(--ease-snap) both;
-}
-
-.floating-chip__copy {
+.capture-chip__copy {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -220,14 +241,53 @@
   text-align: left;
 }
 
-.floating-chip__color {
+.capture-chip__copy:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.capture-chip__square {
   width: 20px;
   height: 20px;
   border-radius: 4px;
   flex-shrink: 0;
+  border: 1.5px solid rgba(130, 122, 100, 0.4);
+  background: transparent;
+  transition:
+    background-color var(--dur-quick) var(--ease-snap),
+    border-color var(--dur-quick) var(--ease-snap);
 }
 
-.floating-chip__save {
+.capture-chip__square.is-filled {
+  border-color: transparent;
+}
+
+.capture-chip__code {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+}
+
+.capture-chip__hex {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  translate: 0 -50%;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-snap);
+  pointer-events: none;
+}
+
+.capture-chip__hex.is-on {
+  opacity: 1;
+}
+
+.capture-chip.is-landed .scramble-code {
+  opacity: 0;
+}
+
+.capture-chip__save {
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -235,13 +295,30 @@
   padding: 4px;
   min-width: 32px;
   min-height: 32px;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-snap);
 }
 
-.floating-chip__copy:focus-visible,
-.floating-chip__save:focus-visible {
+.capture-chip.is-landed .capture-chip__save {
+  opacity: 1;
+}
+
+.capture-chip__copy:focus-visible,
+.capture-chip__save:focus-visible {
   outline: 2px solid var(--dark-blue);
   outline-offset: 2px;
   border-radius: 6px;
+}
+
+/* Off-screen probe: revealed chrome, used to clamp destination before travel. */
+.capture-chip--sizer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+  translate: none;
 }
 
 /* Front/rear camera toggle floating in the viewport's bottom-right corner. The
@@ -259,6 +336,7 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 16px rgba(27, 35, 35, 0.18);
+  z-index: 3;
 }
 
 .switch-camera-btn:focus-visible {
@@ -269,55 +347,6 @@
 .switch-camera-btn:disabled {
   cursor: default;
   pointer-events: none;
-}
-
-/* ---- Idle/hold loading skeletons (14-67 / 14-121) ----
-   Three faint pills stacked bottom-left, holding the reveal slots before any
-   blob data exists. */
-.skeleton-chips {
-  position: absolute;
-  left: 32px;
-  /* De-pinned from the old fixed 72px. Rests 72px off the bottom on tall
-     viewports (matching the design), but on short phones slides toward the
-     bottom edge so its top never rises within --stack-gap-min of the capture
-     card above it. The cap = viewport height minus everything stacked above the
-     gap; min() picks whichever is lower (further from the card), max() keeps the
-     stack on-screen on absurdly short viewports. No env(safe-area-inset-bottom)
-     is needed here: the opaque .bottom-nav below the viewport already carries
-     the home-indicator inset, so the viewport's bottom edge is device-safe. */
-  bottom: max(
-    12px,
-    min(
-      72px,
-      calc(
-        100% - var(--capture-card-top) - var(--capture-card-height) -
-          var(--skeleton-stack-height) - var(--stack-gap-min)
-      )
-    )
-  );
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-  pointer-events: none;
-}
-
-.skeleton-chip {
-  width: 175px;
-  height: 36px;
-  border-radius: 8px;
-  background: rgba(255, 248, 240, 0.66);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 12px;
-}
-
-.skeleton-chip__square {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  border: 1.5px solid rgba(130, 122, 100, 0.4);
-  flex-shrink: 0;
 }
 
 /* ---- Number-scramble loading (matrix counter) ----
@@ -338,6 +367,7 @@
   color: var(--text-tertiary);
   letter-spacing: 0.5px;
   user-select: none;
+  transition: opacity var(--dur-quick) var(--ease-snap);
 }
 
 .scramble-code__hash {
@@ -381,7 +411,7 @@
   text-align: center;
 }
 
-.skeleton-chips.is-animated .scramble-reel__col {
+.scramble-code.is-rolling .scramble-reel__col {
   animation-name: reelRoll;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
@@ -391,28 +421,6 @@
 @keyframes reelRoll {
   to {
     transform: translateY(-50%);
-  }
-}
-
-@keyframes chipIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% + 8px));
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%);
-  }
-}
-
-@keyframes chipInLeft {
-  from {
-    opacity: 0;
-    transform: translate(0, calc(-50% + 8px));
-  }
-  to {
-    opacity: 1;
-    transform: translate(0, -50%);
   }
 }
 
@@ -446,9 +454,14 @@
   display: none;
 }
 
+.camera-frame.is-releasing {
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-snap);
+}
+
 /* "Hold to swatch" / "Swatching" target card. Sits proportionally in the upper
-   third (top is a % of the viewport, not a pinned 244px), so it rides up on
-   shorter phones instead of colliding with the skeleton stack below. */
+   third (top is a % of the viewport, not a pinned 244px). Stays mounted through
+   reveal: fade/scale out as chip 0 begins travel, visibility hidden after. */
 .capture-card {
   position: absolute;
   left: 32px;
@@ -463,17 +476,53 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 1;
+  transition:
+    opacity var(--dur-flash) var(--ease-snap),
+    transform var(--dur-flash) var(--ease-snap),
+    visibility var(--dur-flash) var(--ease-snap);
 }
 
-/* Cream wash — invisible at rest, CSS heartbeat while `.is-pulsing`. The class
-   is toggled from CameraScreen for the duration of the hold. */
+.capture-card.is-exiting {
+  opacity: 0;
+  transform: scale(0.98);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Cream wash — invisible at rest, CSS heartbeat while `.is-pulsing`. Clipped
+   here so the card itself can overflow:visible for the progress ring. */
 .capture-card__glow {
   position: absolute;
   inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
   background: #fff1e2;
+  z-index: 0;
+}
+
+/* Determinate cream stroke. Idle is empty (dashoffset 1); holding tracks
+   progress linearly via onTick. Heartbeat stays behind this. */
+.capture-card__ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.capture-card__ring-stroke {
+  fill: none;
+  stroke: var(--layer-1);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
 }
 
 @keyframes heartbeat {
@@ -501,6 +550,7 @@
 
 .capture-card__label {
   position: relative;
+  z-index: 2;
   font-family: var(--font-body); /* Spectral */
   font-weight: 300;
   font-size: 16px;
@@ -541,6 +591,7 @@
   background: #ffffff;
   opacity: 0;
   pointer-events: none;
+  z-index: 4;
 }
 
 .retake-btn {
@@ -552,6 +603,22 @@
   padding: 8px 4px;
   color: var(--layer-1);
   text-shadow: 0 1px 6px rgba(27, 35, 35, 0.35);
+  z-index: 3;
+}
+
+.retake-btn--enter {
+  animation: retakeIn var(--dur-flash) var(--ease-snap) both;
+  /* Last chip stagger: --dur-base + 2 × 60ms. */
+  animation-delay: calc(var(--dur-base) + 120ms);
+}
+
+@keyframes retakeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .capture-toast-layer {
@@ -572,18 +639,25 @@
   box-shadow: 0 4px 16px rgba(27, 35, 35, 0.28);
 }
 
-/* Reduced motion: drop the heartbeat/flash/reveal motion — the glow is hidden
-   outright (no pulse) and chips appear in place. The JS layer also honors
-   prefers-reduced-motion; this is the CSS belt-and-suspenders. */
+/* Reduced motion: drop the heartbeat/travel/reel motion. The progress ring
+   still fills (JS onTick, no CSS animation). Chips appear in place. */
 @media (prefers-reduced-motion: reduce) {
-  .floating-chip--reveal.floating-chip--center,
-  .floating-chip--reveal.floating-chip--left {
+  .capture-card,
+  .capture-card.is-exiting,
+  .camera-frame.is-releasing,
+  .capture-chip__square,
+  .capture-chip__hex,
+  .capture-chip__save,
+  .scramble-code {
+    transition: none;
+  }
+  .retake-btn--enter {
     animation: none;
   }
   .capture-card__glow {
     display: none;
   }
-  .skeleton-chips.is-animated .scramble-reel__col {
+  .scramble-code.is-rolling .scramble-reel__col {
     animation: none;
   }
 }

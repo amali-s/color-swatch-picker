@@ -34,6 +34,8 @@
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 
   /* Motion (Phase 4 — mirrors src/capture/motion.ts) */
+  --dur-quick: 160ms;
+  --dur-flash: 180ms;
   --dur-base: 220ms;
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
 

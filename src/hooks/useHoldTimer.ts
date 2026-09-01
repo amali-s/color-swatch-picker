@@ -4,7 +4,9 @@ export type HoldState = 'idle' | 'holding' | 'captured';
 
 interface UseHoldTimerResult {
   state: HoldState;
-  /** 0 → 1 progress toward capture while `state === 'holding'`. */
+  /** Committed progress: 0 while idle/holding, 1 once captured. Per-frame
+   *  values are delivered through `onTick` so visuals can paint without a
+   *  60fps React render. */
   progress: number;
   /** Begin a hold (no-op unless currently idle). */
   start: () => void;
@@ -69,11 +71,13 @@ export function useHoldTimer(
 
     const elapsed = now - startTimeRef.current;
     const next = Math.min(elapsed / durationMs, 1);
-    setProgress(next);
+    // Paint via onTick (SVG ring) — do not setProgress every frame or the
+    // whole capture screen re-renders at 60fps.
     onTickRef.current?.(next, dt);
 
     if (next >= 1) {
       rafRef.current = null;
+      setProgress(1);
       setPhase('captured');
       onCaptureRef.current();
       return;

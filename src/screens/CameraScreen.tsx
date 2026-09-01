@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import BottomNav from '../components/BottomNav';
 import CaptureTarget from '../components/CaptureTarget';
-import FloatingChip from '../components/FloatingChip';
-import SkeletonChips from '../components/SkeletonChips';
+import CaptureChip from '../components/FloatingChip';
 import SwitchCameraIcon from '../components/SwitchCameraIcon';
 import { copyText } from '../lib/clipboard';
 import { useCamera } from '../hooks/useCamera';
@@ -11,12 +10,16 @@ import { useHoldTimer } from '../hooks/useHoldTimer';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { useFeedLuminance } from '../hooks/useFeedLuminance';
 import {
+  ANALYZE_FLOOR_MS,
+  DUR_BASE,
   DUR_FLASH,
   DUR_QUICK,
   EASE_SNAP,
   HOLD_THRESHOLD_MS,
   STAGGER,
+  STAGGER_REVERSE,
 } from '../capture/motion';
+import type { ChipAnchor, ChipPhase } from '../components/FloatingChip';
 import type { Swatch } from '../types';
 import type { View } from '../App';
 
@@ -29,7 +32,7 @@ interface Props {
 
 interface ChipLayout {
   position: { left: string; top: string };
-  anchor: 'center' | 'left';
+  anchor: ChipAnchor;
 }
 
 interface Size {
@@ -37,16 +40,19 @@ interface Size {
   h: number;
 }
 
-// Null-anchor fallback: fixed Figma 2:260 positions used when a color has no
-// contiguous region to point at (cluster.anchor === null) and the real
-// object-fit:cover mapping can't be computed. Chip 2 is pinned flush-left (a
-// centered 13% would clip it off the viewport), so it keeps its own anchor +
-// reveal keyframe. When a real anchor exists, chipPlacements maps it to where
-// the color actually sits in the frame instead.
+/** Forward morph / reverse retake. `live` covers idle, holding, and analyzing. */
+type Story = 'live' | 'revealing' | 'revealed' | 'returning';
+
+const CHIP_COUNT = 3;
+
+// Idle seats and null-anchor fallback. Positions live as CSS variables on
+// .camera-viewport so they stay clear of the full-width capture card (two
+// above, one below — a pill at ~43% always sat on the card). Blob-anchored
+// reveal still uses chipPlacements; de-collision of those is out of scope.
 const CHIP_LAYOUT: ChipLayout[] = [
-  { position: { left: '50%', top: '9%' }, anchor: 'center' },
-  { position: { left: '50px', top: '43%' }, anchor: 'left' },
-  { position: { left: '50%', top: '78%' }, anchor: 'center' },
+  { position: { left: 'var(--chip-0-left)', top: 'var(--chip-0-top)' }, anchor: 'center' },
+  { position: { left: 'var(--chip-1-left)', top: 'var(--chip-1-top)' }, anchor: 'left' },
+  { position: { left: 'var(--chip-2-left)', top: 'var(--chip-2-top)' }, anchor: 'center' },
 ];
 
 // Keep a chip's clamped center at least this far from the viewport edge (px),
@@ -55,14 +61,15 @@ const CHIP_MARGIN = 12;
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
+const RING_EMPTY = '1';
+const RING_FULL = '0';
+
 /**
- * The capture moment (Phase 4) wired to the real extraction pipeline (Phase 5
- * integration). `useCamera` drives a live viewfinder; on hold-complete the
- * current video frame is grabbed to a canvas and handed to `useColorExtraction`
- * (k-means + blob detection in a Web Worker). The Phase 4 choreography — cream
- * heartbeat pulse, capture flash + freeze punch, staggered reveal — is
- * unchanged; the reveal is now gated on real extraction completing rather than a
- * fixed delay, and the detected chips carry the actual dominant colors.
+ * The capture moment wired to the real extraction pipeline. Hold progress
+ * paints a cream ring from the hold timer's onTick; on capture the flash +
+ * freeze punch still snap, then a minimum analyzing beat lets them finish
+ * before the three loader pills morph into hex chips. Retake plays that
+ * sequence backward.
  */
 export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Props) {
   const reduced = usePrefersReducedMotion();
@@ -80,7 +87,9 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     reset: resetExtraction,
   } = useColorExtraction();
 
-  const [revealed, setRevealed] = useState(false);
+  const [story, setStory] = useState<Story>('live');
+  const [cardExiting, setCardExiting] = useState(false);
+  const [frameReleasing, setFrameReleasing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
   // Set when a hold completes but no frame could be grabbed (camera not yet
@@ -90,24 +99,20 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
   // object-fit:cover transform the frozen frame is displayed with.
   const [viewportBox, setViewportBox] = useState<Size>({ w: 0, h: 0 });
   // Measured size of each revealed chip, used for size-aware edge clamping.
-  // `null` until the chip has been laid out and measured.
+  // `null` until the hidden sizer has been laid out.
   const [chipSizes, setChipSizes] = useState<(Size | null)[]>([]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
+  const ringRef = useRef<SVGRectElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
-  // Root elements of the revealed chips, kept so a useLayoutEffect can measure
-  // them before paint.
-  const chipRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const sizerRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const capturedAtRef = useRef(0);
 
   const accentRef = useRef('#0095cc');
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // Adapt the engine's PaletteResult into the UI's Swatch shape. The engine
-  // emits "#RRGGBB" (uppercase, with hash); Swatch stores the bare hex and the
-  // UI re-adds the hash. The id is derived from the hex so saving the same
-  // color across captures dedupes by color in the saved list.
   const detected = useMemo<Swatch[]>(() => {
     if (!result) return [];
     return result.clusters.map((cluster) => {
@@ -133,7 +138,6 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
         return fallback;
       }
 
-      // object-fit: cover — scale so the image fills the box, center the overflow.
       const scale = Math.max(viewportBox.w / imageW, viewportBox.h / imageH);
       const displayW = imageW * scale;
       const displayH = imageH * scale;
@@ -142,8 +146,6 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
       const px = offsetX + anchor.x * displayW;
       const py = offsetY + anchor.y * displayH;
 
-      // Size-aware clamp against the chip's center (anchor: 'center'). Half its
-      // measured size keeps the full pill on screen; 0 until first measured.
       const size = chipSizes[i];
       const halfW = size ? size.w / 2 : 0;
       const halfH = size ? size.h / 2 : 0;
@@ -155,12 +157,11 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
           left: `${(cx / viewportBox.w) * 100}%`,
           top: `${(cy / viewportBox.h) * 100}%`,
         },
-        anchor: 'center',
+        anchor: 'center' as const,
       };
     });
   }, [detected, result, viewportBox, chipSizes]);
 
-  // Pull the live accent token so the ring/glow/flash stay in sync with CSS.
   useEffect(() => {
     const value = getComputedStyle(document.documentElement)
       .getPropertyValue('--accent')
@@ -168,8 +169,6 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     if (value) accentRef.current = value;
   }, []);
 
-  // Track the viewport's pixel size (same pattern as the engine's AnchorMarkers)
-  // so anchors can be mapped into it. The viewport is always mounted.
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -189,6 +188,18 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     timersRef.current = [];
   }, []);
 
+  const paintRing = useCallback((dashoffset: string) => {
+    const ring = ringRef.current;
+    if (ring) ring.style.strokeDashoffset = dashoffset;
+  }, []);
+
+  const onHoldTick = useCallback(
+    (progress: number) => {
+      paintRing(String(1 - progress));
+    },
+    [paintRing],
+  );
+
   const showToast = useCallback(
     (message: string) => {
       setToast(message);
@@ -197,9 +208,6 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     [after],
   );
 
-  // Grab the current video frame and hand its pixels to the extraction worker.
-  // Runs synchronously inside the hold timer's completion tick, while <video> is
-  // still mounted and playing. Returns false if no frame could be read.
   const grabFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -215,12 +223,14 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     if (!ctx) return false;
     ctx.drawImage(video, 0, 0, width, height);
 
-    // One frame's pixels → k-means (colors) + blob detection (positions).
     extract(ctx.getImageData(0, 0, width, height));
     return true;
   }, [extract, videoRef]);
 
   const capture = useCallback(() => {
+    capturedAtRef.current = performance.now();
+    paintRing(RING_FULL);
+
     if ('vibrate' in navigator) {
       try {
         navigator.vibrate(15);
@@ -263,39 +273,26 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
       }
     }
 
-    // Kick off real extraction. Reveal is gated on it completing (see effect).
     if (!grabFrame()) setGrabFailed(true);
-  }, [after, reduced, grabFrame]);
+  }, [after, reduced, grabFrame, paintRing]);
 
-  const hold = useHoldTimer(HOLD_THRESHOLD_MS, capture);
+  const hold = useHoldTimer(HOLD_THRESHOLD_MS, capture, onHoldTick);
 
-  // Run the cream heartbeat only while holding; the animation itself is CSS
-  // (`.capture-card__glow.is-pulsing`). Idle/captured show no pulse.
   useEffect(() => {
     const glow = glowRef.current;
-    if (!glow) return;
-    glow.classList.toggle('is-pulsing', hold.state === 'holding');
-  }, [hold.state]);
+    if (glow) glow.classList.toggle('is-pulsing', hold.state === 'holding');
+    if (hold.state === 'idle') paintRing(RING_EMPTY);
+    if (hold.state === 'captured') paintRing(RING_FULL);
+  }, [hold.state, paintRing]);
 
-  // Reveal the swatches once extraction lands. A short beat lets the capture
-  // flash breathe first; under reduced motion it reveals immediately.
-  useEffect(() => {
-    if (hold.state !== 'captured' || extractStatus !== 'done') return;
-    if (detected.length === 0) return; // degenerate frame → handled as a failure state
-    const t = setTimeout(() => setRevealed(true), reduced ? 0 : 140);
-    return () => clearTimeout(t);
-  }, [hold.state, extractStatus, detected.length, reduced]);
-
-  // Measure the revealed chips before paint so the size-aware clamp is applied
-  // to the position the user first sees (no visible jump). A chip's size is
-  // fixed regardless of where it lands, so only writing state when a measured
-  // size actually changed stops this from re-triggering itself into a loop.
+  // Measure destination chip size as soon as extraction lands, so the clamp is
+  // applied to chipPlacements before travel starts (no land-then-jump).
   useLayoutEffect(() => {
-    if (!revealed) return;
+    if (detected.length === 0) return;
     setChipSizes((prev) => {
       let changed = false;
       const next = detected.map((_, i) => {
-        const el = chipRefs.current[i];
+        const el = sizerRefs.current[i];
         if (!el) return prev[i] ?? null;
         const size = { w: el.offsetWidth, h: el.offsetHeight };
         const previous = prev[i];
@@ -307,12 +304,58 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
       });
       return changed ? next : prev;
     });
-  }, [detected, revealed]);
+  }, [detected]);
+
+  // Gate reveal on extract-done AND a floor after capture so "Reading colors"
+  // is a beat, not a flicker. Reduced motion keeps the 0ms path.
+  useEffect(() => {
+    if (hold.state !== 'captured' || extractStatus !== 'done') return;
+    if (detected.length === 0) return;
+    if (story !== 'live') return;
+    const sized = detected.every((_, i) => chipSizes[i]);
+    if (!sized) return;
+    if (reduced) {
+      setStory('revealed');
+      setCardExiting(true);
+      return;
+    }
+    const elapsed = performance.now() - capturedAtRef.current;
+    const wait = Math.max(0, ANALYZE_FLOOR_MS - elapsed);
+    const t = setTimeout(() => {
+      setStory('revealing');
+      setCardExiting(true);
+    }, wait);
+    return () => clearTimeout(t);
+  }, [hold.state, extractStatus, detected, reduced, story, chipSizes]);
+
+  useEffect(() => {
+    if (story !== 'revealing') return;
+    const t = setTimeout(() => setStory('revealed'), DUR_BASE + 2 * STAGGER);
+    return () => clearTimeout(t);
+  }, [story]);
 
   const resetVisuals = useCallback(() => {
     const glow = glowRef.current;
     if (glow) glow.classList.remove('is-pulsing');
-  }, []);
+    paintRing(RING_EMPTY);
+  }, [paintRing]);
+
+  const instantReset = useCallback(() => {
+    clearTimers();
+    hold.reset();
+    resetExtraction();
+    setStory('live');
+    setCardExiting(false);
+    setFrameReleasing(false);
+    setCopiedId(null);
+    setGrabFailed(false);
+    setChipSizes([]);
+    sizerRefs.current = [];
+    capturedAtRef.current = 0;
+    const viewport = viewportRef.current;
+    if (viewport) viewport.style.transform = 'scale(1)';
+    resetVisuals();
+  }, [clearTimers, hold, resetExtraction, resetVisuals]);
 
   const onHoldEnd = useCallback(() => {
     if (hold.state !== 'holding') return;
@@ -320,8 +363,6 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     resetVisuals();
   }, [hold, resetVisuals]);
 
-  // Flipping the camera mid-hold would swatch the wrong feed, so bail out of any
-  // in-progress hold (and clear its ring/glow) before requesting the new camera.
   const onSwitchCamera = useCallback(() => {
     if (hold.state === 'holding') {
       hold.cancel();
@@ -331,24 +372,26 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
   }, [hold, resetVisuals, switchCamera]);
 
   const onRetake = useCallback(() => {
+    if (story === 'returning') return;
+    if (reduced || story === 'live') {
+      instantReset();
+      return;
+    }
     clearTimers();
-    hold.reset();
-    resetExtraction();
-    setRevealed(false);
-    setCopiedId(null);
-    setGrabFailed(false);
-    setChipSizes([]);
-    chipRefs.current = [];
-    const viewport = viewportRef.current;
-    if (viewport) viewport.style.transform = 'scale(1)';
-    resetVisuals();
-  }, [clearTimers, hold, resetExtraction, resetVisuals]);
+    setStory('returning');
+    const cardInAt = STAGGER_REVERSE * 2;
+    after(cardInAt, () => {
+      setCardExiting(false);
+      setFrameReleasing(true);
+    });
+    after(cardInAt + DUR_BASE, instantReset);
+  }, [story, reduced, instantReset, clearTimers, after]);
 
   const copyChip = useCallback(
     async (swatch: Swatch) => {
       const hex = `#${swatch.hex}`;
       const ok = await copyText(hex);
-      if (!ok) return; // clipboard blocked — no false "Copied" swap
+      if (!ok) return;
       setCopiedId(swatch.id);
       after(1200, () => setCopiedId((current) => (current === swatch.id ? null : current)));
       showToast(`Copied ${hex}`);
@@ -365,24 +408,18 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     [onToggleSave, savedIds, showToast],
   );
 
-  // Clear pending timers on unmount.
   useEffect(() => clearTimers, [clearTimers]);
 
   const cameraReady = cameraStatus === 'ready';
   const isCaptured = hold.state === 'captured';
-  // Is the area behind the capture card dark? Drives light vs. dark card ink.
-  // Sampled while a live feed is showing; defaults to dark (light ink) for the
-  // no-feed states (pending / denied), which render over a dark fallback.
-  const feedDark = useFeedLuminance(videoRef, cameraReady && !revealed);
-  // Extraction failed, produced nothing, or the frame couldn't be grabbed.
+  const feedDark = useFeedLuminance(videoRef, cameraReady && story === 'live' && !isCaptured);
   const failed =
     isCaptured &&
+    story === 'live' &&
     (grabFailed ||
       extractStatus === 'error' ||
       (extractStatus === 'done' && detected.length === 0));
-  // Held/holding target card also covers the brief "analyzing" beat after
-  // capture, before the reveal — until it either reveals or fails.
-  const showTarget = cameraReady && !revealed && !failed;
+  const showTarget = cameraReady && !failed;
   const targetLabel =
     hold.state === 'holding'
       ? 'Swatching'
@@ -390,12 +427,25 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
         ? 'Reading colors'
         : 'Hold to swatch';
 
+  const inputLocked = story === 'returning' || story === 'revealing';
+
+  const chipPhase = (): ChipPhase => {
+    if (story === 'returning') return 'returning';
+    if (story === 'revealed') return 'revealed';
+    if (story === 'revealing') return 'settling';
+    if (hold.state === 'idle') return 'idle';
+    return 'scanning';
+  };
+
+  const travelDelay = (i: number) =>
+    story === 'returning' ? (CHIP_COUNT - 1 - i) * STAGGER_REVERSE : i * STAGGER;
+
   return (
     <div className="screen" style={{ background: 'var(--layer-1)' }}>
       <div
         ref={viewportRef}
         className={`camera-viewport${feedDark ? ' is-dark-feed' : ''}`}
-        onPointerDown={cameraReady ? hold.start : undefined}
+        onPointerDown={cameraReady && !inputLocked && !isCaptured ? hold.start : undefined}
         onPointerUp={onHoldEnd}
         onPointerLeave={onHoldEnd}
         onPointerCancel={onHoldEnd}
@@ -407,11 +457,15 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
           muted
           playsInline
         />
-        {/* Frozen frame, drawn on capture and shown over the live feed so the
-            revealed chips sit on the image the colors came from. */}
         <canvas
           ref={canvasRef}
-          className={`camera-frame${isCaptured ? '' : ' is-hidden'}`}
+          className={[
+            'camera-frame',
+            isCaptured || frameReleasing ? '' : 'is-hidden',
+            frameReleasing ? 'is-releasing' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           aria-hidden="true"
         />
 
@@ -428,41 +482,41 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
 
         {showTarget && (
           <>
-            <CaptureTarget label={targetLabel} glowRef={glowRef} />
-            {/* Loading placeholders occupying the reveal slots before blob data
-                exists. Still em-dash slots only while idle; the hex-scramble
-                counter rolls as soon as a hold begins ("Swatching") and through
-                the post-capture "Reading colors" beat — i.e. whenever the state
-                is no longer idle. */}
-            <SkeletonChips animate={!reduced} scanning={hold.state !== 'idle'} />
+            <CaptureTarget
+              label={targetLabel}
+              glowRef={glowRef}
+              ringRef={ringRef}
+              exiting={cardExiting}
+            />
+            {Array.from({ length: CHIP_COUNT }, (_, i) => {
+              const swatch = detected[i] ?? null;
+              const slot = CHIP_LAYOUT[i];
+              const dest = chipPlacements[i] ?? slot;
+              return (
+                <CaptureChip
+                  key={i}
+                  index={i}
+                  phase={chipPhase()}
+                  slot={slot.position}
+                  slotAnchor={slot.anchor}
+                  destination={dest.position}
+                  destAnchor={dest.anchor}
+                  swatch={swatch}
+                  saved={Boolean(swatch && savedIds.has(swatch.id))}
+                  copied={Boolean(swatch && copiedId === swatch.id)}
+                  animate={!reduced}
+                  travelDelay={travelDelay(i)}
+                  sizerRef={(el) => {
+                    sizerRefs.current[i] = el;
+                  }}
+                  onToggle={swatch ? () => toggleChip(swatch) : () => {}}
+                  onCopy={swatch ? () => copyChip(swatch) : () => {}}
+                />
+              );
+            })}
           </>
         )}
 
-        {isCaptured &&
-          revealed &&
-          detected.map((swatch, i) => {
-            const layout = chipPlacements[i] ?? CHIP_LAYOUT[i % CHIP_LAYOUT.length];
-            return (
-              <FloatingChip
-                key={swatch.id}
-                swatch={swatch}
-                position={layout.position}
-                anchor={layout.anchor}
-                rootRef={(el) => {
-                  chipRefs.current[i] = el;
-                }}
-                saved={savedIds.has(swatch.id)}
-                copied={copiedId === swatch.id}
-                revealDelay={i * STAGGER}
-                animate={!reduced}
-                onToggle={() => toggleChip(swatch)}
-                onCopy={() => copyChip(swatch)}
-              />
-            );
-          })}
-
-        {/* Extraction errored, returned nothing, or the frame couldn't be
-            grabbed (26-347). Tapping the card returns to idle. */}
         {failed && (
           <button type="button" className="capture-card capture-card--error" onClick={onRetake}>
             <span className="capture-card__label">
@@ -471,26 +525,28 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
           </button>
         )}
 
-        {isCaptured && !failed && (
-          <button type="button" className="retake-btn text-heading-1" onClick={onRetake}>
+        {isCaptured && !failed && (story === 'revealing' || story === 'revealed') && (
+          <button
+            type="button"
+            className={`retake-btn text-heading-1${reduced ? '' : ' retake-btn--enter'}`}
+            onClick={onRetake}
+          >
             Tap to retake
           </button>
         )}
 
         <div ref={flashRef} className="capture-flash" aria-hidden="true" />
 
-        {/* Front/rear toggle — only on multi-camera devices, and only while a
-            live feed is showing. Disabled once a swatch is on screen. */}
         {canSwitch && cameraReady && (
           <button
             type="button"
             className="switch-camera-btn"
             aria-label="Switch camera"
-            disabled={isCaptured}
+            disabled={isCaptured || inputLocked}
             onClick={onSwitchCamera}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <SwitchCameraIcon disabled={isCaptured} />
+            <SwitchCameraIcon disabled={isCaptured || inputLocked} />
           </button>
         )}
       </div>
