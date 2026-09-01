@@ -119,6 +119,123 @@
   border-radius: 6px;
 }
 
+/* List copy: hex stays put; "Copied" is a second voice to its right.
+   Absolutely placed so the row never reflows. Camera chips still use
+   `.copy-swap` (hex ↔ Copied overlay). */
+.copy-confirm {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  color: var(--text-primary);
+}
+
+.copy-confirm__copied {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  translate: 0 -50%;
+  margin-left: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-snap-in);
+}
+
+.copy-confirm.is-copied .copy-confirm__copied {
+  opacity: 1;
+  transition-timing-function: var(--ease-snap);
+}
+
+/* Camera-chip hex ↔ Copied. Same grid cell so the pill width never jumps.
+   Incoming “Copied” carries a --layer-1 plate that covers the hex glyphs
+   (list rows use `.copy-confirm` instead — hex stays, no plate). */
+.copy-swap {
+  position: relative;
+  display: inline-grid;
+  grid-template-areas: 'copy';
+  justify-items: start;
+  align-items: center;
+}
+
+.copy-swap__hex {
+  grid-area: copy;
+  white-space: nowrap;
+  transition: opacity var(--dur-quick) var(--ease-snap);
+}
+
+.copy-swap__copied {
+  grid-area: copy;
+  justify-self: stretch;
+  align-self: stretch;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-snap-in);
+}
+
+.copy-swap__copied::before {
+  content: '';
+  position: absolute;
+  inset: -4px -6px;
+  background: var(--layer-1);
+  border-radius: 3px;
+  z-index: -1;
+}
+
+.copy-swap.is-copied .copy-swap__hex {
+  opacity: 0;
+  transition-timing-function: var(--ease-snap-in);
+}
+
+.copy-swap.is-copied .copy-swap__copied {
+  opacity: 1;
+  transition-timing-function: var(--ease-snap);
+}
+
+/* Bookmark scale lives on a wrapper, not the SVG (compositor-friendly).
+   Save overshoots with snap ease-out; unsave eases in, squeezes, and
+   settles back at 1 so removing the class does not pop. */
+.bookmark-pop {
+  display: flex;
+  transform-origin: center center;
+}
+
+.bookmark-pop.is-saving {
+  animation: bookmarkSave var(--dur-quick) var(--ease-snap);
+}
+
+.bookmark-pop.is-unsaving {
+  animation: bookmarkUnsave var(--dur-quick) var(--ease-snap-in);
+}
+
+@keyframes bookmarkSave {
+  0% {
+    transform: scale(0.86);
+  }
+  55% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes bookmarkUnsave {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 /* Visually-hidden live region for copy announcements. */
 .sr-only {
   position: absolute;
@@ -301,6 +418,14 @@
 
 .capture-chip.is-landed .capture-chip__save {
   opacity: 1;
+}
+
+/* Copied confirmation: delay the bookmark hide 80ms so it eases out instead
+   of popping, then fade it back in 160ms when hex restores. */
+.capture-chip.is-copied.is-landed .capture-chip__save {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-quick) var(--ease-snap) calc(var(--dur-quick) / 2);
 }
 
 .capture-chip__copy:focus-visible,
@@ -491,6 +616,37 @@
   pointer-events: none;
 }
 
+/* Live capture card: chrome moves onto the press wrapper so press-in (scale
+   0.985) and exit (scale 0.98) never share a transform. Pending/error cards
+   keep the surface styles on `.capture-card` itself. */
+.capture-card--live {
+  background: transparent;
+  border: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.capture-card__press {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 248, 240, 0.34);
+  border: 1px solid rgba(255, 248, 240, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  transform: scale(1);
+  transition: transform var(--dur-quick) var(--ease-snap);
+}
+
+.capture-card__press.is-pressed {
+  transform: scale(0.985);
+  transition-duration: calc(var(--dur-quick) / 2);
+}
+
 /* Cream wash — invisible at rest, CSS heartbeat while `.is-pulsing`. Clipped
    here so the card itself can overflow:visible for the progress ring. */
 .capture-card__glow {
@@ -560,8 +716,45 @@
   padding: 0 20px;
   text-shadow: 0 0 5px rgba(255, 247, 220, 0.5);
   transition:
-    color 0.25s ease,
-    text-shadow 0.25s ease;
+    color var(--dur-flash) var(--ease-snap),
+    text-shadow var(--dur-flash) var(--ease-snap);
+}
+
+.capture-card__swap {
+  display: block;
+}
+
+.capture-card__swap.is-out {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  top: 0;
+}
+
+.capture-card__label.is-swapping .capture-card__swap.is-in {
+  animation: labelIn var(--dur-flash) var(--ease-snap) both;
+}
+
+.capture-card__label.is-swapping .capture-card__swap.is-out {
+  animation: labelOut var(--dur-flash) var(--ease-snap) both;
+}
+
+@keyframes labelIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes labelOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 /* Low-light / no-feed background → light ink (#fff8f0) with a dark halo so the
@@ -621,6 +814,20 @@
   }
 }
 
+.retake-btn--exit {
+  animation: retakeOut var(--dur-flash) var(--ease-snap) both;
+  pointer-events: none;
+}
+
+@keyframes retakeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .capture-toast-layer {
   position: absolute;
   left: 0;
@@ -637,6 +844,44 @@
   border-radius: 32px;
   padding: 8px 16px;
   box-shadow: 0 4px 16px rgba(27, 35, 35, 0.28);
+  animation: toastIn var(--dur-quick) var(--ease-snap) both;
+}
+
+.capture-toast.is-exiting {
+  animation: toastOut var(--dur-flash) var(--ease-snap) both;
+}
+
+.capture-toast.is-reduced {
+  animation-name: toastFadeIn;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toastFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes toastOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 /* Reduced motion: drop the heartbeat/travel/reel motion. The progress ring
@@ -644,15 +889,36 @@
 @media (prefers-reduced-motion: reduce) {
   .capture-card,
   .capture-card.is-exiting,
+  .capture-card__press,
+  .capture-card__press.is-pressed,
   .camera-frame.is-releasing,
   .capture-chip__square,
   .capture-chip__hex,
   .capture-chip__save,
+  .copy-swap__hex,
+  .copy-swap__copied,
+  .copy-confirm__copied,
   .scramble-code {
     transition: none;
   }
-  .retake-btn--enter {
+  .retake-btn--enter,
+  .retake-btn--exit,
+  .bookmark-pop.is-saving,
+  .bookmark-pop.is-unsaving,
+  .capture-card__label.is-swapping .capture-card__swap.is-in,
+  .capture-card__label.is-swapping .capture-card__swap.is-out {
     animation: none;
+  }
+  .capture-toast,
+  .capture-toast.is-exiting {
+    animation-duration: var(--dur-quick);
+  }
+  .capture-toast {
+    animation-name: toastFadeIn;
+  }
+  .capture-toast.is-exiting {
+    animation-name: toastOut;
+    animation-duration: var(--dur-flash);
   }
   .capture-card__glow {
     display: none;

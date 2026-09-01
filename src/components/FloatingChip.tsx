@@ -1,6 +1,6 @@
 import { Bookmark } from 'lucide-react';
-import { useLayoutEffect, useRef } from 'react';
-import { DUR_BASE, EASE_SNAP } from '../capture/motion';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { DUR_BASE, DUR_QUICK, EASE_SNAP } from '../capture/motion';
 import ScrambleCode from './SkeletonChips';
 import type { CSSProperties } from 'react';
 import type { Swatch } from '../types';
@@ -52,6 +52,8 @@ export default function CaptureChip({
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const firstRectRef = useRef<DOMRect | null>(null);
+  const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [bookmarkMotion, setBookmarkMotion] = useState<'save' | 'unsave' | null>(null);
 
   const atDest = phase === 'settling' || phase === 'revealed';
   const layout = atDest
@@ -108,17 +110,41 @@ export default function CaptureChip({
     };
   }, [phase, animate, travelDelay]);
 
+  useEffect(
+    () => () => {
+      if (burstTimerRef.current) clearTimeout(burstTimerRef.current);
+    },
+    [],
+  );
+
+  const handleToggle = () => {
+    if (bookmarkMotion) return;
+    if (burstTimerRef.current) {
+      clearTimeout(burstTimerRef.current);
+      burstTimerRef.current = null;
+    }
+    onToggle();
+    if (!animate) return;
+    setBookmarkMotion(saved ? 'unsave' : 'save');
+    burstTimerRef.current = setTimeout(() => {
+      burstTimerRef.current = null;
+      setBookmarkMotion(null);
+    }, DUR_QUICK);
+  };
+
   const className = [
     'capture-chip',
     asSwatch ? 'capture-chip--swatch' : 'capture-chip--loader',
     `capture-chip--${layout.anchor}`,
     interactive ? 'is-interactive' : '',
     phase === 'revealed' ? 'is-landed' : '',
+    copied ? 'is-copied' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
-  const hexLabel = copied ? 'Copied' : swatch?.hex ?? '';
+  const bookmarkFilled = saved;
+  const bookmarkBusy = copied || Boolean(bookmarkMotion);
 
   return (
     <>
@@ -142,29 +168,39 @@ export default function CaptureChip({
             swatch={swatch}
             asSwatch={asSwatch}
             showHex={showHex}
-            hexLabel={hexLabel}
+            copied={copied}
             animate={animate}
             index={index}
           />
         </button>
-        {showBookmark && !copied && (
+        {showBookmark && (
           <button
             type="button"
             aria-label={
               saved ? `Remove #${swatch!.hex} from saved swatches` : `Save #${swatch!.hex}`
             }
             aria-pressed={saved}
-            onClick={onToggle}
+            onClick={handleToggle}
             className="capture-chip__save"
-            tabIndex={interactive ? undefined : -1}
-            disabled={!interactive}
+            tabIndex={interactive && !copied ? undefined : -1}
+            disabled={!interactive || bookmarkBusy}
           >
-            <Bookmark
-              size={15}
-              color="var(--text-tertiary)"
-              fill={saved ? 'var(--text-tertiary)' : 'none'}
-              strokeWidth={1.75}
-            />
+            <span
+              className={`bookmark-pop${
+                bookmarkMotion && animate
+                  ? bookmarkMotion === 'save'
+                    ? ' is-saving'
+                    : ' is-unsaving'
+                  : ''
+              }`}
+            >
+              <Bookmark
+                size={15}
+                color="var(--text-tertiary)"
+                fill={bookmarkFilled ? 'var(--text-tertiary)' : 'none'}
+                strokeWidth={1.75}
+              />
+            </span>
           </button>
         )}
       </div>
@@ -190,7 +226,7 @@ function ChipFace({
   swatch,
   asSwatch,
   showHex,
-  hexLabel,
+  copied,
   animate,
   index,
 }: {
@@ -198,7 +234,7 @@ function ChipFace({
   swatch: Swatch | null;
   asSwatch: boolean;
   showHex: boolean;
-  hexLabel: string;
+  copied: boolean;
   animate: boolean;
   index: number;
 }) {
@@ -216,12 +252,15 @@ function ChipFace({
           animate={animate}
           chipIndex={index}
         />
-        {showHex && (
+        {showHex && swatch && (
           <span
             className={`capture-chip__hex text-label-2${phase === 'revealed' ? ' is-on' : ''}`}
             style={{ color: 'var(--text-secondary)' }}
           >
-            {hexLabel}
+            <span className={`copy-swap${copied ? ' is-copied' : ''}`} aria-hidden="true">
+              <span className="copy-swap__hex">{swatch.hex}</span>
+              <span className="copy-swap__copied">Copied</span>
+            </span>
           </span>
         )}
       </span>

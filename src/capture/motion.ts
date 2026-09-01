@@ -18,10 +18,12 @@ export const STAGGER = 60; // gap between the three chips revealing
 export const STAGGER_REVERSE = 40;
 
 /**
- * Minimum "Reading colors" beat after capture so a fast worker cannot
- * reveal before the flash (180ms) and freeze punch have finished.
+ * Minimum analyzing beat after capture so a fast worker cannot reveal
+ * before the flash (180ms) and freeze punch have finished.
  */
 export const ANALYZE_FLOOR_MS = 280;
 
-/** Snappy ease-out for discrete transitions. */
+/** Snappy ease-out for discrete arrivals (Copied in, bookmark save). */
 export const EASE_SNAP = 'cubic-bezier(0.22, 1, 0.36, 1)';
+/** Inverse of EASE_SNAP — ease-in for discrete departures (Copied out, unsave). */
+export const EASE_SNAP_IN = 'cubic-bezier(0.64, 0, 0.78, 0)';

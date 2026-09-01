@@ -92,6 +92,8 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
   const [frameReleasing, setFrameReleasing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [toastExiting, setToastExiting] = useState(false);
+  const [toastEpoch, setToastEpoch] = useState(0);
   // Set when a hold completes but no frame could be grabbed (camera not yet
   // producing pixels). Distinct from an extraction error.
   const [grabFailed, setGrabFailed] = useState(false);
@@ -112,6 +114,9 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
 
   const accentRef = useRef('#0095cc');
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const toastDwellRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastExitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastLiveRef = useRef(false);
 
   const detected = useMemo<Swatch[]>(() => {
     if (!result) return [];
@@ -200,12 +205,32 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     [paintRing],
   );
 
+  const clearToastTimers = useCallback(() => {
+    if (toastDwellRef.current) clearTimeout(toastDwellRef.current);
+    if (toastExitRef.current) clearTimeout(toastExitRef.current);
+    toastDwellRef.current = null;
+    toastExitRef.current = null;
+  }, []);
+
   const showToast = useCallback(
     (message: string) => {
+      clearToastTimers();
+      if (!toastLiveRef.current) {
+        setToastEpoch((n) => n + 1);
+      }
+      toastLiveRef.current = true;
+      setToastExiting(false);
       setToast(message);
-      after(1400, () => setToast(''));
+      toastDwellRef.current = setTimeout(() => {
+        setToastExiting(true);
+        toastLiveRef.current = false;
+        toastExitRef.current = setTimeout(() => {
+          setToast('');
+          setToastExiting(false);
+        }, DUR_FLASH);
+      }, 1400);
     },
-    [after],
+    [clearToastTimers],
   );
 
   const grabFrame = useCallback(() => {
@@ -306,8 +331,9 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
     });
   }, [detected]);
 
-  // Gate reveal on extract-done AND a floor after capture so "Reading colors"
-  // is a beat, not a flicker. Reduced motion keeps the 0ms path.
+  // Gate reveal on extract-done AND a floor after capture so a fast worker
+  // cannot reveal before the flash and freeze punch have finished.
+  // Reduced motion keeps the 0ms path.
   useEffect(() => {
     if (hold.state !== 'captured' || extractStatus !== 'done') return;
     if (detected.length === 0) return;
@@ -409,6 +435,7 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
   );
 
   useEffect(() => clearTimers, [clearTimers]);
+  useEffect(() => clearToastTimers, [clearToastTimers]);
 
   const cameraReady = cameraStatus === 'ready';
   const isCaptured = hold.state === 'captured';
@@ -420,12 +447,7 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
       extractStatus === 'error' ||
       (extractStatus === 'done' && detected.length === 0));
   const showTarget = cameraReady && !failed;
-  const targetLabel =
-    hold.state === 'holding'
-      ? 'Swatching'
-      : isCaptured
-        ? 'Reading colors'
-        : 'Hold to swatch';
+  const targetLabel = hold.state === 'idle' ? 'Hold to swatch' : 'Swatching';
 
   const inputLocked = story === 'returning' || story === 'revealing';
 
@@ -487,6 +509,8 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
               glowRef={glowRef}
               ringRef={ringRef}
               exiting={cardExiting}
+              pressed={hold.state === 'holding' && !reduced}
+              animate={!reduced}
             />
             {Array.from({ length: CHIP_COUNT }, (_, i) => {
               const swatch = detected[i] ?? null;
@@ -525,15 +549,24 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
           </button>
         )}
 
-        {isCaptured && !failed && (story === 'revealing' || story === 'revealed') && (
-          <button
-            type="button"
-            className={`retake-btn text-heading-1${reduced ? '' : ' retake-btn--enter'}`}
-            onClick={onRetake}
-          >
-            Tap to retake
-          </button>
-        )}
+        {isCaptured &&
+          !failed &&
+          (story === 'revealing' || story === 'revealed' || story === 'returning') && (
+            <button
+              type="button"
+              className={`retake-btn text-heading-1${
+                reduced
+                  ? ''
+                  : story === 'returning'
+                    ? ' retake-btn--exit'
+                    : ' retake-btn--enter'
+              }`}
+              onClick={onRetake}
+              disabled={story === 'returning'}
+            >
+              Tap to retake
+            </button>
+          )}
 
         <div ref={flashRef} className="capture-flash" aria-hidden="true" />
 
@@ -553,7 +586,14 @@ export default function CameraScreen({ savedIds, onToggleSave, onNavChange }: Pr
 
       {toast && (
         <div className="capture-toast-layer" aria-live="polite">
-          <div className="capture-toast text-heading-1">{toast}</div>
+          <div
+            key={toastEpoch}
+            className={`capture-toast text-heading-1${toastExiting ? ' is-exiting' : ''}${
+              reduced ? ' is-reduced' : ''
+            }`}
+          >
+            {toast}
+          </div>
         </div>
       )}
 

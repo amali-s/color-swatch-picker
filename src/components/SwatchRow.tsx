@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bookmark } from 'lucide-react';
 import { copyText } from '../lib/clipboard';
+import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
+import { DUR_QUICK } from '../capture/motion';
 import type { Swatch } from '../types';
 
 interface Props {
@@ -13,8 +15,8 @@ interface Props {
 
 /**
  * A saved-swatch row with two distinct, keyboard-operable hit areas:
- *   - the row body (color square + hex) copies `#HEX` and swaps the label to
- *     "Copied" for ~1.2s (Figma 26-389), and
+ *   - the row body (color square + hex) copies `#HEX` and fades in "Copied"
+ *     beside the hex for ~1.2s (hex never leaves), and
  *   - a filled bookmark at the right edge, revealed on hover/focus (2-172),
  *     un-saves the color.
  * The bookmark stays in the tab order (revealed via `:focus-within`) so it's
@@ -22,12 +24,16 @@ interface Props {
  */
 export default function SwatchRow({ swatch, onRemove, onAnnounce }: Props) {
   const { id, hex } = swatch;
+  const reduced = usePrefersReducedMotion();
   const [copied, setCopied] = useState(false);
+  const [unsaving, setUnsaving] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unsaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (unsaveRef.current) clearTimeout(unsaveRef.current);
     },
     [],
   );
@@ -41,6 +47,16 @@ export default function SwatchRow({ swatch, onRemove, onAnnounce }: Props) {
     timerRef.current = setTimeout(() => setCopied(false), 1200);
   }, [hex, onAnnounce]);
 
+  const handleRemove = useCallback(() => {
+    if (unsaving) return;
+    if (reduced) {
+      onRemove(id);
+      return;
+    }
+    setUnsaving(true);
+    unsaveRef.current = setTimeout(() => onRemove(id), DUR_QUICK);
+  }, [id, onRemove, reduced, unsaving]);
+
   return (
     <div className="swatch-row">
       <button
@@ -50,22 +66,29 @@ export default function SwatchRow({ swatch, onRemove, onAnnounce }: Props) {
         aria-label={copied ? `Copied #${hex}` : `Copy #${hex}`}
       >
         <span className="swatch-row__chip" style={{ background: `#${hex}` }} />
-        <span className="text-body-2" style={{ color: 'var(--text-primary)' }}>
-          {copied ? 'Copied' : hex}
+        <span
+          className={`copy-confirm text-body-2${copied ? ' is-copied' : ''}`}
+          aria-hidden="true"
+        >
+          <span className="copy-confirm__hex">{hex}</span>
+          <span className="copy-confirm__copied">Copied</span>
         </span>
       </button>
       <button
         type="button"
         className="swatch-row__bookmark"
-        onClick={() => onRemove(id)}
+        onClick={handleRemove}
+        disabled={unsaving}
         aria-label={`Remove #${hex} from saved swatches`}
       >
-        <Bookmark
-          size={18}
-          color="var(--secondary-action)"
-          fill="var(--secondary-action)"
-          strokeWidth={1.75}
-        />
+        <span className={`bookmark-pop${unsaving ? ' is-unsaving' : ''}`}>
+          <Bookmark
+            size={18}
+            color="var(--secondary-action)"
+            fill="var(--secondary-action)"
+            strokeWidth={1.75}
+          />
+        </span>
       </button>
     </div>
   );
