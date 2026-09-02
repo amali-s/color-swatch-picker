@@ -65,6 +65,21 @@
   overflow-y: auto;
 }
 
+/* Empty ↔ filled occupy the same cell so the empty card can ease out
+   while the heading fades up, without both sitting at full opacity in flow. */
+.list-swap {
+  display: grid;
+}
+
+.list-swap__empty,
+.list-swap__filled {
+  grid-area: 1 / 1;
+}
+
+.list-swap__empty {
+  z-index: 1;
+}
+
 /* Empty state card */
 .empty-card {
   margin-top: 64px;
@@ -78,18 +93,91 @@
   text-align: center;
 }
 
+.empty-card.is-exiting {
+  animation: emptyOut var(--dur-flash) var(--ease-snap-in) both;
+  pointer-events: none;
+}
+
+.empty-card.is-entering {
+  animation: emptyIn var(--dur-flash) var(--ease-snap) both;
+}
+
+@keyframes emptyOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes emptyIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* Saved swatches list */
+.swatch-list-heading {
+  color: var(--text-tertiary);
+  margin-top: 56px;
+  margin-bottom: 8px;
+}
+
+.swatch-list-heading.is-entering,
+.swatch-row-slot.is-entering {
+  animation: fadeUpIn var(--dur-base) var(--ease-snap) both;
+}
+
+@keyframes fadeUpIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .swatch-list {
   display: flex;
   flex-direction: column;
 }
 
+/* Row collapse: max-height 56→0 so neighbors slide instead of jumping.
+   Overflow stays visible at rest so the 8px enter travel is not clipped. */
+.swatch-row-slot {
+  max-height: 56px;
+  opacity: 1;
+  transition:
+    max-height var(--dur-flash) var(--ease-snap-in),
+    opacity var(--dur-flash) var(--ease-snap-in);
+}
+
+.swatch-row-slot.is-exiting {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 .swatch-row {
   display: flex;
   align-items: center;
-  min-height: 56px;
-  /* Full-width bottom hairline divider. */
+  /* Full-width bottom hairline divider. Chip 32 + body padding 12×2 = 56. */
   border-bottom: 1px solid var(--background);
+}
+
+.swatch-row-slot.is-exiting > .swatch-row {
+  border-bottom-width: 0;
 }
 
 /* Row body = the copy hit area (color square + hex). */
@@ -101,6 +189,13 @@
   gap: 16px;
   padding: 12px 0;
   text-align: left;
+  transition: padding var(--dur-flash) var(--ease-snap-in);
+}
+
+.swatch-row-slot.is-exiting .swatch-row__body {
+  padding-top: 0;
+  padding-bottom: 0;
+  min-height: 0;
 }
 
 .swatch-row__chip {
@@ -120,7 +215,7 @@
   justify-content: center;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--dur-quick) var(--ease-snap);
 }
 
 .swatch-row:hover .swatch-row__bookmark,
@@ -516,6 +611,18 @@
   pointer-events: none;
 }
 
+.switch-camera-icon {
+  display: flex;
+  color: #59554B;
+  transition:
+    color var(--dur-quick) var(--ease-snap),
+    transform var(--dur-base) var(--ease-snap);
+}
+
+.switch-camera-icon.is-disabled {
+  color: #ADABA5;
+}
+
 /* ---- Number-scramble loading (matrix counter) ----
    Each pill rolls a six-character hex "counter" (0–9 A–F) like a slot machine,
    foreshadowing the hex code the swatch resolves to. Each reel is a duplicated
@@ -606,6 +713,22 @@
    object-fit: cover; the gradient on .camera-viewport shows through only while
    the camera is pending/errored (feed hidden). The frozen frame paints over the
    live feed after capture so revealed chips sit on the image they came from. */
+.camera-feed-layer {
+  position: absolute;
+  inset: 0;
+  /* ~100ms each way; 160ms × 5/8 maps onto --dur-quick without a new token. */
+  transition: opacity calc(var(--dur-quick) * 5 / 8) var(--ease-snap);
+}
+
+.camera-feed-layer.is-faded {
+  opacity: 0;
+  transition-timing-function: var(--ease-snap-in);
+}
+
+.camera-feed-layer.is-hidden {
+  display: none;
+}
+
 .camera-feed,
 .camera-frame {
   position: absolute;
@@ -614,6 +737,16 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.camera-switch-freeze {
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.camera-switch-freeze.is-on {
+  opacity: 1;
 }
 
 .camera-feed.is-hidden,
@@ -965,6 +1098,23 @@
   .capture-toast.is-exiting {
     animation-name: toastOut;
     animation-duration: var(--dur-flash);
+  }
+  .empty-card.is-exiting,
+  .empty-card.is-entering,
+  .swatch-list-heading.is-entering,
+  .swatch-row-slot.is-entering {
+    animation: none;
+  }
+  .swatch-row-slot,
+  .swatch-row-slot.is-exiting,
+  .swatch-row-slot.is-exiting .swatch-row__body,
+  .swatch-row__body,
+  .camera-feed-layer,
+  .camera-feed-layer.is-faded {
+    transition: none;
+  }
+  .switch-camera-icon {
+    transition: color var(--dur-quick) var(--ease-snap);
   }
   .capture-card__glow {
     display: none;

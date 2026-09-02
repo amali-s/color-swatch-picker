@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bookmark } from 'lucide-react';
 import { copyText } from '../lib/clipboard';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
-import { DUR_QUICK } from '../capture/motion';
+import { DUR_FLASH, DUR_QUICK } from '../capture/motion';
 import type { Swatch } from '../types';
 
 interface Props {
@@ -11,6 +11,10 @@ interface Props {
   onRemove: (id: string) => void;
   /** Announce copy success to the screen's aria-live region. */
   onAnnounce: (message: string) => void;
+  /** Fade-up enter (new row or empty→filled ceremony). */
+  entering?: boolean;
+  /** Stagger delay in ms (ceremony rows 0/1/2). */
+  enterDelay?: number;
 }
 
 /**
@@ -21,12 +25,23 @@ interface Props {
  *     un-saves the color.
  * The bookmark stays in the tab order (revealed via `:focus-within`) so it's
  * reachable without a pointer.
+ *
+ * Un-save is a two-beat: P1 bookmark scale (160ms) then the row itself
+ * collapses (180ms). `onRemove` fires only after both, so the list does not
+ * unmount the row on the click frame. The row is the object — the 32px
+ * square does not animate on its own.
  */
-export default function SwatchRow({ swatch, onRemove, onAnnounce }: Props) {
+export default function SwatchRow({
+  swatch,
+  onRemove,
+  onAnnounce,
+  entering = false,
+  enterDelay = 0,
+}: Props) {
   const { id, hex } = swatch;
   const reduced = usePrefersReducedMotion();
   const [copied, setCopied] = useState(false);
-  const [unsaving, setUnsaving] = useState(false);
+  const [unsavePhase, setUnsavePhase] = useState<'idle' | 'unsaving' | 'exiting'>('idle');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unsaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -48,48 +63,62 @@ export default function SwatchRow({ swatch, onRemove, onAnnounce }: Props) {
   }, [hex, onAnnounce]);
 
   const handleRemove = useCallback(() => {
-    if (unsaving) return;
+    if (unsavePhase !== 'idle') return;
     if (reduced) {
       onRemove(id);
       return;
     }
-    setUnsaving(true);
-    unsaveRef.current = setTimeout(() => onRemove(id), DUR_QUICK);
-  }, [id, onRemove, reduced, unsaving]);
+    setUnsavePhase('unsaving');
+    unsaveRef.current = setTimeout(() => {
+      setUnsavePhase('exiting');
+      unsaveRef.current = setTimeout(() => onRemove(id), DUR_FLASH);
+    }, DUR_QUICK);
+  }, [id, onRemove, reduced, unsavePhase]);
 
   return (
-    <div className="swatch-row">
-      <button
-        type="button"
-        className="swatch-row__body"
-        onClick={handleCopy}
-        aria-label={copied ? `Copied #${hex}` : `Copy #${hex}`}
-      >
-        <span className="swatch-row__chip" style={{ background: `#${hex}` }} />
-        <span
-          className={`copy-confirm text-body-2${copied ? ' is-copied' : ''}`}
-          aria-hidden="true"
+    <div
+      className={[
+        'swatch-row-slot',
+        entering ? 'is-entering' : '',
+        unsavePhase === 'exiting' ? 'is-exiting' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={entering && enterDelay ? { animationDelay: `${enterDelay}ms` } : undefined}
+    >
+      <div className="swatch-row">
+        <button
+          type="button"
+          className="swatch-row__body"
+          onClick={handleCopy}
+          aria-label={copied ? `Copied #${hex}` : `Copy #${hex}`}
         >
-          <span className="copy-confirm__hex">{hex}</span>
-          <span className="copy-confirm__copied">Copied</span>
-        </span>
-      </button>
-      <button
-        type="button"
-        className="swatch-row__bookmark"
-        onClick={handleRemove}
-        disabled={unsaving}
-        aria-label={`Remove #${hex} from saved swatches`}
-      >
-        <span className={`bookmark-pop${unsaving ? ' is-unsaving' : ''}`}>
-          <Bookmark
-            size={18}
-            color="var(--secondary-action)"
-            fill="var(--secondary-action)"
-            strokeWidth={1.75}
-          />
-        </span>
-      </button>
+          <span className="swatch-row__chip" style={{ background: `#${hex}` }} />
+          <span
+            className={`copy-confirm text-body-2${copied ? ' is-copied' : ''}`}
+            aria-hidden="true"
+          >
+            <span className="copy-confirm__hex">{hex}</span>
+            <span className="copy-confirm__copied">Copied</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="swatch-row__bookmark"
+          onClick={handleRemove}
+          disabled={unsavePhase !== 'idle'}
+          aria-label={`Remove #${hex} from saved swatches`}
+        >
+          <span className={`bookmark-pop${unsavePhase !== 'idle' ? ' is-unsaving' : ''}`}>
+            <Bookmark
+              size={18}
+              color="var(--secondary-action)"
+              fill="var(--secondary-action)"
+              strokeWidth={1.75}
+            />
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

@@ -60,6 +60,8 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 
 const RING_EMPTY = '1';
 const RING_FULL = '0';
+/** Half of a ~200ms feed crossfade; maps onto DUR_QUICK (160 × 5/8). */
+const FEED_FADE_MS = (DUR_QUICK * 5) / 8;
 
 /**
  * The capture moment wired to the real extraction pipeline. Hold progress
@@ -75,6 +77,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     status: cameraStatus,
     error: cameraError,
     canSwitch,
+    switching,
     switchCamera,
   } = useCamera();
   const {
@@ -103,11 +106,17 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const switchFreezeRef = useRef<HTMLCanvasElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<SVGRectElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
   const sizerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const capturedAtRef = useRef(0);
+  const flipLockRef = useRef(false);
+  const wasSwitchingRef = useRef(false);
+  const [feedFaded, setFeedFaded] = useState(false);
+  const [freezeOn, setFreezeOn] = useState(false);
+  const [switchRotation, setSwitchRotation] = useState(0);
 
   const accentRef = useRef('#0095cc');
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -386,13 +395,62 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     resetVisuals();
   }, [hold, resetVisuals]);
 
+  const paintSwitchFreeze = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = switchFreezeRef.current;
+    if (!video || !canvas) return;
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    if (!width || !height) return;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, width, height);
+  }, [videoRef]);
+
   const onSwitchCamera = useCallback(() => {
-    if (hold.state === 'holding') {
+    if (flipLockRef.current || switching) return;
+
+    const wasHolding = hold.state === 'holding';
+    if (wasHolding) {
       hold.cancel();
       resetVisuals();
     }
-    switchCamera();
-  }, [hold, resetVisuals, switchCamera]);
+    if (!reduced) setSwitchRotation((deg) => deg + 180);
+
+    const startFlip = () => {
+      flipLockRef.current = true;
+      if (reduced) {
+        switchCamera();
+        return;
+      }
+      paintSwitchFreeze();
+      setFreezeOn(true);
+      setFeedFaded(true);
+      after(FEED_FADE_MS, () => switchCamera());
+    };
+
+    // Keep CaptureTarget mounted through the press-in spring-back (160ms)
+    // before the stream swap drops the old feed.
+    if (wasHolding && !reduced) {
+      after(DUR_QUICK, startFlip);
+    } else {
+      startFlip();
+    }
+  }, [after, hold, paintSwitchFreeze, reduced, resetVisuals, switchCamera, switching]);
+
+  useEffect(() => {
+    if (switching) {
+      wasSwitchingRef.current = true;
+      return;
+    }
+    if (!wasSwitchingRef.current) return;
+    wasSwitchingRef.current = false;
+    setFreezeOn(false);
+    setFeedFaded(false);
+    flipLockRef.current = false;
+  }, [switching]);
 
   const onRetake = useCallback(() => {
     if (story === 'returning') return;
@@ -474,13 +532,22 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
         onPointerLeave={onHoldEnd}
         onPointerCancel={onHoldEnd}
       >
-        <video
-          ref={videoRef}
-          className={`camera-feed${cameraReady ? '' : ' is-hidden'}`}
-          autoPlay
-          muted
-          playsInline
-        />
+        <div
+          className={[
+            'camera-feed-layer',
+            cameraReady ? '' : 'is-hidden',
+            feedFaded ? 'is-faded' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <video ref={videoRef} className="camera-feed" autoPlay muted playsInline />
+          <canvas
+            ref={switchFreezeRef}
+            className={`camera-feed camera-switch-freeze${freezeOn ? ' is-on' : ''}`}
+            aria-hidden="true"
+          />
+        </div>
         <canvas
           ref={canvasRef}
           className={[
@@ -581,7 +648,11 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
             onClick={onSwitchCamera}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <SwitchCameraIcon disabled={isCaptured || inputLocked} />
+            <SwitchCameraIcon
+              disabled={isCaptured || inputLocked}
+              rotation={switchRotation}
+              animate={!reduced}
+            />
           </button>
         )}
       </div>

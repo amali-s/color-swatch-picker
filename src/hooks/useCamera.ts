@@ -15,6 +15,11 @@ interface UseCameraResult {
   facingMode: FacingMode
   /** True only when the device exposes more than one video input. */
   canSwitch: boolean
+  /**
+   * True while a facing flip is acquiring the other camera. Distinct from
+   * initial `pending` — the capture card and live feed stay up.
+   */
+  switching: boolean
   /** Toggle between the front and rear camera. */
   switchCamera: () => void
 }
@@ -24,6 +29,10 @@ interface UseCameraResult {
  * Defaults to the rear camera ('environment') since the app is about pointing
  * at objects, and can switch to the front camera when the device has more than
  * one video input.
+ *
+ * A facing flip does not drop `status` back to `'pending'` (that path flashes
+ * "Starting camera…" and unmounts CaptureTarget). After the first ready
+ * stream, later facingMode changes set `switching` instead.
  *
  * Note: `getUserMedia` only works in a secure context — HTTPS or
  * http://localhost. Over plain HTTP (e.g. a LAN IP) the API is undefined and
@@ -35,6 +44,8 @@ export function useCamera(): UseCameraResult {
   const [error, setError] = useState<string | null>(null)
   const [facingMode, setFacingMode] = useState<FacingMode>('environment')
   const [canSwitch, setCanSwitch] = useState(false)
+  const [switching, setSwitching] = useState(false)
+  const hasBeenReadyRef = useRef(false)
 
   const switchCamera = useCallback(() => {
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))
@@ -56,9 +67,12 @@ export function useCamera(): UseCameraResult {
         return
       }
 
-      // Re-entering (a facingMode change) — return to the pending state while
-      // the new stream is acquired.
-      setStatus('pending')
+      const isSwitch = hasBeenReadyRef.current
+      if (isSwitch) {
+        setSwitching(true)
+      } else {
+        setStatus('pending')
+      }
 
       try {
         // `ideal` (not `exact`) so a single-camera device falls back to its
@@ -72,8 +86,14 @@ export function useCamera(): UseCameraResult {
         }
         if (videoRef.current) {
           videoRef.current.srcObject = stream
+          void videoRef.current.play().catch(() => {
+            /* Autoplay can reject if the element is not yet visible; the
+               `autoPlay` attribute retries when it is. */
+          })
         }
+        hasBeenReadyRef.current = true
         setStatus('ready')
+        setSwitching(false)
         setError(null)
 
         // Now that permission is granted, device labels/counts are populated,
@@ -89,6 +109,7 @@ export function useCamera(): UseCameraResult {
       } catch (err) {
         if (cancelled) return
         setStatus('error')
+        setSwitching(false)
         setError(describeCameraError(err))
       }
     }
@@ -104,7 +125,7 @@ export function useCamera(): UseCameraResult {
     }
   }, [facingMode])
 
-  return { videoRef, status, error, facingMode, canSwitch, switchCamera }
+  return { videoRef, status, error, facingMode, canSwitch, switching, switchCamera }
 }
 
 function describeCameraError(err: unknown): string {
