@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { kmeans, mulberry32, readableInkOn, toHex } from './kmeans.ts'
+import { oklabDistSq, srgbToOklab } from './oklab.ts'
 import type { RGB } from './types.ts'
 
 test('toHex clamps and formats to uppercase #RRGGBB', () => {
@@ -38,10 +39,13 @@ function rgbClusterSamples(): { samples: RGB[]; truths: RGB[] } {
   return { samples, truths }
 }
 
+/** Perceptual nearness: OKLab ΔE ≲ 0.05 is the same color for this recovery check. */
 function recoversAll(centers: number[][], truths: RGB[]): boolean {
-  return truths.every((t) =>
-    centers.some((c) => Math.hypot(c[0] - t[0], c[1] - t[1], c[2] - t[2]) < 25),
-  )
+  const thresholdSq = 0.05 * 0.05
+  return truths.every((t) => {
+    const tLab = srgbToOklab(t)
+    return centers.some((c) => oklabDistSq(srgbToOklab([c[0], c[1], c[2]]), tLab) < thresholdSq)
+  })
 }
 
 test('kmeans always returns k internally-consistent clusters', () => {
@@ -63,12 +67,10 @@ test('kmeans always returns k internally-consistent clusters', () => {
   }
 })
 
-test('kmeans recovers three well-separated colors for most seeds', () => {
-  // Plain random init is seed-sensitive: some seeds settle into a local optimum
-  // with one center stranded between two true clusters. That's a real property
-  // of k-means (the reason the Phase 2 harness offers "Re-run with new seed"),
-  // so this asserts a strong majority recover all three rather than pretending
-  // any single seed is guaranteed.
+test('kmeans recovers three well-separated colors across seeds', () => {
+  // k-means++ spreads the first centers; a few restarts then keep the lowest
+  // OKLab SSE, so a single unlucky init is unlikely to strand a center between
+  // two true clusters. Well-separated R/G/B should recover on every seed.
   const { samples, truths } = rgbClusterSamples()
   let recovered = 0
   const trials = 20
@@ -77,9 +79,43 @@ test('kmeans recovers three well-separated colors for most seeds', () => {
     if (recoversAll(centers, truths)) recovered++
   }
   assert.ok(
-    recovered >= trials * 0.5,
+    recovered >= trials - 1,
     `only ${recovered}/${trials} seeds recovered all three colors`,
   )
+})
+
+test('kmeans++ with restarts is deterministic for a given seed', () => {
+  const { samples } = rgbClusterSamples()
+  const a = kmeans(samples, 3, 12, mulberry32(42))
+  const b = kmeans(samples, 3, 12, mulberry32(42))
+  assert.deepEqual(a.centers, b.centers)
+  assert.deepEqual(a.counts, b.counts)
+
+  // A different seed may differ (init order / which restart wins). Center-index
+  // order is not ranked, so even the same three colors often permute.
+  let foundDiff = false
+  for (let seed = 43; seed <= 52; seed++) {
+    const other = kmeans(samples, 3, 12, mulberry32(seed))
+    if (
+      JSON.stringify(other.centers) !== JSON.stringify(a.centers) ||
+      JSON.stringify(other.counts) !== JSON.stringify(a.counts)
+    ) {
+      foundDiff = true
+      break
+    }
+  }
+  assert.ok(foundDiff, 'expected some other seed to produce a different result')
+})
+
+test('kmeans with restarts: 1 still returns k clusters', () => {
+  const { samples } = rgbClusterSamples()
+  const { centers, counts } = kmeans(samples, 3, 12, mulberry32(1), 1)
+  assert.equal(centers.length, 3)
+  assert.equal(counts.length, 3)
+  assert.equal(counts.reduce((a, b) => a + b, 0), samples.length)
+  for (const c of centers) {
+    assert.ok(c.every(Number.isFinite))
+  }
 })
 
 test('readableInkOn picks dark ink on light colors and vice versa', () => {

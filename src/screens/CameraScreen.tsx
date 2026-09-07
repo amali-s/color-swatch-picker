@@ -40,7 +40,9 @@ interface Size {
 /** Forward morph / reverse retake. `live` covers idle, holding, and analyzing. */
 type Story = 'live' | 'revealing' | 'revealed' | 'returning';
 
+/** Idle/analyzing loader count. Reveal uses `detected.length` (1–3 today, cap 6). */
 const CHIP_COUNT = 3;
+const MAX_CHIPS = 6;
 
 // Idle seats and null-anchor fallback. Positions live as CSS variables on
 // .camera-viewport so they stay clear of the full-width capture card (two
@@ -67,8 +69,9 @@ const FEED_FADE_MS = (DUR_QUICK * 5) / 8;
  * The capture moment wired to the real extraction pipeline. Hold progress
  * paints a cream ring from the hold timer's onTick; on capture the flash +
  * freeze punch still snap, then a minimum analyzing beat lets them finish
- * before the three loader pills morph into hex chips. Retake plays that
- * sequence backward.
+ * before the loader pills morph into hex chips (count follows the merged
+ * palette, so a two-color scene does not leave a blank third slot). Retake
+ * plays that sequence backward.
  */
 export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   const reduced = usePrefersReducedMotion();
@@ -126,19 +129,24 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
 
   const detected = useMemo<Swatch[]>(() => {
     if (!result) return [];
-    return result.clusters.map((cluster) => {
+    return result.clusters.slice(0, MAX_CHIPS).map((cluster) => {
       const hex = cluster.hex.replace('#', '');
       return { id: `detected-${hex}`, hex };
     });
   }, [result]);
+
+  // Idle shows the default three loaders. Once extraction lands, reveal,
+  // stagger, and retake follow the merged cluster count — never a blank extra
+  // slot, never more than MAX_CHIPS.
+  const chipCount = detected.length > 0 ? detected.length : CHIP_COUNT;
 
   // Where each chip actually lands. When a color has a real anchor and the
   // viewport is measured, its normalized image-space position is pushed through
   // the same object-fit:cover transform the frozen frame is drawn with, then the
   // chip's center is clamped by half its measured size (+margin) so the whole
   // pill stays on screen. Otherwise it falls back to the fixed CHIP_LAYOUT slot.
-  // `anchor` never influences the reported color — it only moves the chip (see
-  // color/types.ts). Chip overlap (two close blobs colliding) is out of scope.
+  // Chip position is the blob centroid; hex is a blob-core reading of that
+  // same region (see color/types.ts). Chip overlap is out of scope.
   const chipPlacements = useMemo<ChipLayout[]>(() => {
     return detected.map((_, i) => {
       const fallback = CHIP_LAYOUT[i % CHIP_LAYOUT.length];
@@ -362,9 +370,10 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
 
   useEffect(() => {
     if (story !== 'revealing') return;
-    const t = setTimeout(() => setStory('revealed'), DUR_BASE + 2 * STAGGER);
+    const lastStagger = Math.max(0, chipCount - 1) * STAGGER;
+    const t = setTimeout(() => setStory('revealed'), DUR_BASE + lastStagger);
     return () => clearTimeout(t);
-  }, [story]);
+  }, [story, chipCount]);
 
   const resetVisuals = useCallback(() => {
     const glow = glowRef.current;
@@ -460,13 +469,13 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     }
     clearTimers();
     setStory('returning');
-    const cardInAt = STAGGER_REVERSE * 2;
+    const cardInAt = STAGGER_REVERSE * Math.max(0, chipCount - 1);
     after(cardInAt, () => {
       setCardExiting(false);
       setFrameReleasing(true);
     });
     after(cardInAt + DUR_BASE, instantReset);
-  }, [story, reduced, instantReset, clearTimers, after]);
+  }, [story, reduced, instantReset, clearTimers, after, chipCount]);
 
   const copyChip = useCallback(
     async (swatch: Swatch) => {
@@ -520,7 +529,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   };
 
   const travelDelay = (i: number) =>
-    story === 'returning' ? (CHIP_COUNT - 1 - i) * STAGGER_REVERSE : i * STAGGER;
+    story === 'returning' ? (chipCount - 1 - i) * STAGGER_REVERSE : i * STAGGER;
 
   return (
     <div className="screen" style={{ background: 'var(--layer-1)' }}>
@@ -581,9 +590,9 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
               pressed={hold.state === 'holding' && !reduced}
               animate={!reduced}
             />
-            {Array.from({ length: CHIP_COUNT }, (_, i) => {
+            {Array.from({ length: chipCount }, (_, i) => {
               const swatch = detected[i] ?? null;
-              const slot = CHIP_LAYOUT[i];
+              const slot = CHIP_LAYOUT[i % CHIP_LAYOUT.length];
               const dest = chipPlacements[i] ?? slot;
               return (
                 <CaptureChip

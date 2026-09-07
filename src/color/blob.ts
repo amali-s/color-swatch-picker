@@ -5,6 +5,8 @@ export interface Blob {
   cy: number
   /** Component size in grid cells. */
   size: number
+  /** Cell indices (`y * gridW + x`) of this winning component, scan/flood order. */
+  cells: number[]
 }
 
 /**
@@ -26,6 +28,10 @@ export interface Blob {
  * Returns `null` for any label with no cells in the grid — the caller skips the
  * marker rather than inventing a position. Never throws on empty/scattered
  * input; a lone cell is simply a size-1 blob at its own coordinate.
+ *
+ * Also returns the winning component's cell indices so the caller can erode
+ * and sample a blob-core color without a second flood fill. Centroid/size
+ * remain the public anchoring fields.
  *
  * Single linear scan with a preallocated explicit stack (no recursion, so deep
  * regions can't blow the call stack), O(gridW · gridH).
@@ -53,6 +59,7 @@ export function largestBlobs(
     let size = 0
     let sumX = 0
     let sumY = 0
+    const cells: number[] = []
 
     while (top > 0) {
       const idx = stack[--top]
@@ -61,6 +68,7 @@ export function largestBlobs(
       size++
       sumX += x
       sumY += y
+      cells.push(idx)
 
       // 4-connected neighbours sharing this label.
       if (x > 0) {
@@ -95,9 +103,36 @@ export function largestBlobs(
 
     const prev = best[label]
     if (prev === null || size > prev.size) {
-      best[label] = { cx: sumX / size, cy: sumY / size, size }
+      best[label] = { cx: sumX / size, cy: sumY / size, size, cells }
     }
   }
 
   return best
+}
+
+/**
+ * 4-neighbor morphological erosion of a connected component given as cell
+ * indices. A cell is interior when all four neighbors exist and belong to the
+ * component. If that leaves nothing (thin or scattered region), return `cells`
+ * unchanged so callers can still sample.
+ *
+ * DOM-free, no recursion, O(component) with an O(grid) membership mask.
+ */
+export function erode4(cells: number[], gridW: number, gridH: number): number[] {
+  if (cells.length === 0) return cells
+  const cellCount = gridW * gridH
+  const inComp = new Uint8Array(cellCount)
+  for (let i = 0; i < cells.length; i++) inComp[cells[i]] = 1
+
+  const interior: number[] = []
+  for (let i = 0; i < cells.length; i++) {
+    const idx = cells[i]
+    const x = idx % gridW
+    const y = (idx / gridW) | 0
+    if (x === 0 || x === gridW - 1 || y === 0 || y === gridH - 1) continue
+    if (inComp[idx - 1] && inComp[idx + 1] && inComp[idx - gridW] && inComp[idx + gridW]) {
+      interior.push(idx)
+    }
+  }
+  return interior.length > 0 ? interior : cells
 }

@@ -1,4 +1,4 @@
-/** RGB triple, 0–255. Centroids are floats mid-computation; reported colors are rounded. */
+/** RGB triple, 0–255. OKLab centroids are converted to float sRGB; reported colors are rounded. */
 export type RGB = [number, number, number]
 
 /** Normalized image-space position, both axes in [0, 1]. */
@@ -9,14 +9,17 @@ export interface Point {
 
 export interface Cluster {
   /**
-   * The reported color: the k-means centroid of the sparse full-frame sample.
-   * This is an aggregate of the color wherever it appears across the frame —
-   * it is produced entirely by the clustering pass and is never touched by the
-   * blob/positioning pass, so tooltip anchoring can't shift the displayed value.
+   * The reported color: blob-core median of the surface the chip sits on
+   * (OKLab component-wise median of the eroded largest blob, snapped to the
+   * nearest actual core pixel). If the cluster has no contiguous region,
+   * this is the OKLab median of its sparse samples instead. k-means still
+   * owns membership, count, proportion, and ranking, after near-duplicate
+   * OKLab centers are collapsed so hex/chips match colors the user can tell
+   * apart; the mean centroid is not what the user sees.
    */
   rgb: RGB
   hex: string
-  /** Sparse samples assigned to this cluster. */
+  /** Sparse samples assigned to this cluster (post-merge). */
   count: number
   /** Fraction of the sparse sample assigned to this cluster, 0–1. */
   proportion: number
@@ -34,7 +37,7 @@ export interface Cluster {
 export interface PaletteMeta {
   width: number
   height: number
-  /** 1-D pixel stride used for the k-means sampling pass. */
+  /** 2-D grid stride used for the k-means sampling pass. */
   kmeansStep: number
   /** 2-D pixel stride used for the dense blob-detection pass. */
   denseStep: number
@@ -53,7 +56,11 @@ export interface PaletteMeta {
 }
 
 export interface PaletteResult {
-  /** Clusters ranked largest → smallest by pixel count. */
+  /**
+   * Clusters ranked largest → smallest by merged k-means count. Near-duplicate
+   * OKLab centers are collapsed before dense labeling, so the list is colors
+   * the user can tell apart (never more than 6).
+   */
   clusters: Cluster[]
   meta: PaletteMeta
 }
