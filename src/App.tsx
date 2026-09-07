@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import ListScreen from './screens/ListScreen';
 import CameraScreen from './screens/CameraScreen';
 import BottomNav from './components/BottomNav';
@@ -37,6 +38,7 @@ function App() {
         </div>
         <BottomNav view={view} onChange={setView} />
       </div>
+      <Analytics />
     </div>
   );
 }
