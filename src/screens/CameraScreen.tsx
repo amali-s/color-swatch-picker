@@ -18,6 +18,7 @@ import {
   STAGGER,
   STAGGER_REVERSE,
 } from '../capture/motion';
+import { coverPointToNorm } from '../capture/videoCoords';
 import type { ChipAnchor, ChipPhase } from '../components/FloatingChip';
 import type { Swatch } from '../types';
 
@@ -82,6 +83,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     canSwitch,
     switching,
     switchCamera,
+    focusAt,
   } = useCamera();
   const {
     extract,
@@ -120,6 +122,10 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   const [feedFaded, setFeedFaded] = useState(false);
   const [freezeOn, setFreezeOn] = useState(false);
   const [switchRotation, setSwitchRotation] = useState(0);
+  const [reticle, setReticle] = useState<{ id: number; x: number; y: number } | null>(
+    null,
+  );
+  const reticleIdRef = useRef(0);
 
   const accentRef = useRef('#0095cc');
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -269,6 +275,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   const capture = useCallback(() => {
     capturedAtRef.current = performance.now();
     paintRing(RING_FULL);
+    setReticle(null);
 
     if ('vibrate' in navigator) {
       try {
@@ -393,6 +400,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     setChipSizes([]);
     sizerRefs.current = [];
     capturedAtRef.current = 0;
+    setReticle(null);
     const viewport = viewportRef.current;
     if (viewport) viewport.style.transform = 'scale(1)';
     resetVisuals();
@@ -403,6 +411,39 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     hold.cancel();
     resetVisuals();
   }, [hold, resetVisuals]);
+
+  const onReticleDone = useCallback((id: number) => {
+    setReticle((current) => (current?.id === id ? null : current));
+  }, []);
+
+  const onViewportPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      hold.start();
+      if (switching) return;
+
+      const viewport = viewportRef.current;
+      const video = videoRef.current;
+      if (!viewport) return;
+
+      const rect = viewport.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      reticleIdRef.current += 1;
+      const id = reticleIdRef.current;
+      setReticle({ id, x: px, y: py });
+
+      const norm = coverPointToNorm(
+        px,
+        py,
+        rect.width,
+        rect.height,
+        video?.videoWidth ?? 0,
+        video?.videoHeight ?? 0,
+      );
+      if (norm) focusAt(norm.x, norm.y);
+    },
+    [focusAt, hold, switching, videoRef],
+  );
 
   const paintSwitchFreeze = useCallback(() => {
     const video = videoRef.current;
@@ -536,7 +577,9 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
       <div
         ref={viewportRef}
         className={`camera-viewport${feedDark ? ' is-dark-feed' : ''}`}
-        onPointerDown={cameraReady && !inputLocked && !isCaptured ? hold.start : undefined}
+        onPointerDown={
+          cameraReady && !inputLocked && !isCaptured ? onViewportPointerDown : undefined
+        }
         onPointerUp={onHoldEnd}
         onPointerLeave={onHoldEnd}
         onPointerCancel={onHoldEnd}
@@ -647,6 +690,16 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
           )}
 
         <div ref={flashRef} className="capture-flash" aria-hidden="true" />
+
+        {reticle && (
+          <div
+            key={reticle.id}
+            className={`focus-reticle${reduced ? ' is-reduced' : ''}`}
+            style={{ left: reticle.x, top: reticle.y }}
+            aria-hidden="true"
+            onAnimationEnd={() => onReticleDone(reticle.id)}
+          />
+        )}
 
         {canSwitch && cameraReady && (
           <button

@@ -17,16 +17,16 @@ interface PillMetrics {
 
 /**
  * Persistent bottom tab bar — cream (`--foreground`) surface. A single
- * `--background` indicator sits behind the two icon buttons and slides
- * between them; the glyphs themselves don't recolour (matches the exported
- * mocks). Both buttons are ≥44px and expose `aria-current`.
+ * `--background` indicator sits behind the two buttons and slides between
+ * them; the glyphs themselves don't recolour (matches the exported mocks).
+ * Both buttons are ≥44px, carry a Label 2 caption, and expose `aria-current`.
  */
 export default function BottomNav({ view, onChange }: Props) {
   const reduced = usePrefersReducedMotion();
   const clusterRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLButtonElement>(null);
   const cameraRef = useRef<HTMLButtonElement>(null);
-  const [pill, setPill] = useState<PillMetrics>({ x: 0, w: 84, h: 60 });
+  const [pill, setPill] = useState<PillMetrics>({ x: 0, w: 84, h: 72 });
   const [canSlide, setCanSlide] = useState(false);
 
   const measure = useCallback(() => {
@@ -76,22 +76,22 @@ export default function BottomNav({ view, onChange }: Props) {
         <button
           ref={listRef}
           type="button"
-          aria-label="Saved swatches"
           aria-current={view === 'list' ? 'page' : undefined}
           onClick={() => onChange('list')}
           className="bottom-nav__button"
         >
-          <SwatchesIcon size={32} />
+          <SwatchesIcon size={28} />
+          <span className="bottom-nav__label text-label-2">Swatches</span>
         </button>
         <button
           ref={cameraRef}
           type="button"
-          aria-label="Camera"
           aria-current={view === 'camera' ? 'page' : undefined}
           onClick={() => onChange('camera')}
           className="bottom-nav__button"
         >
           <CameraIcon size={28} />
+          <span className="bottom-nav__label text-label-2">Camera</span>
         </button>
       </div>
     </nav>

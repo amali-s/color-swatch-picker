@@ -22,6 +22,12 @@ interface UseCameraResult {
   switching: boolean
   /** Toggle between the front and rear camera. */
   switchCamera: () => void
+  /**
+   * Ask the camera to meter/focus at a normalized sensor point ([0,1] × [0,1],
+   * origin top-left). No-op when the device or browser does not expose
+   * Image Capture 3A constraints (typical on iOS Safari and most webcams).
+   */
+  focusAt: (x: number, y: number) => void
 }
 
 /**
@@ -33,6 +39,11 @@ interface UseCameraResult {
  * A facing flip does not drop `status` back to `'pending'` (that path flashes
  * "Starting camera…" and unmounts CaptureTarget). After the first ready
  * stream, later facingMode changes set `switching` instead.
+ *
+ * `focusAt` asks the live track to meter at a point (Image Capture 3A:
+ * pointsOfInterest + single-shot focus/exposure). Browsers and cameras that
+ * do not expose those constraints no-op; the viewfinder reticle is the
+ * always-on feedback.
  *
  * Note: `getUserMedia` only works in a secure context — HTTPS or
  * http://localhost. Over plain HTTP (e.g. a LAN IP) the API is undefined and
@@ -46,9 +57,14 @@ export function useCamera(): UseCameraResult {
   const [canSwitch, setCanSwitch] = useState(false)
   const [switching, setSwitching] = useState(false)
   const hasBeenReadyRef = useRef(false)
+  const trackRef = useRef<MediaStreamTrack | null>(null)
 
   const switchCamera = useCallback(() => {
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))
+  }, [])
+
+  const focusAt = useCallback((x: number, y: number) => {
+    void focusTrackAt(trackRef.current, x, y)
   }, [])
 
   useEffect(() => {
@@ -84,6 +100,7 @@ export function useCamera(): UseCameraResult {
           stream.getTracks().forEach((track) => track.stop())
           return
         }
+        trackRef.current = stream.getVideoTracks()[0] ?? null
         if (videoRef.current) {
           videoRef.current.srcObject = stream
           void videoRef.current.play().catch(() => {
@@ -118,6 +135,7 @@ export function useCamera(): UseCameraResult {
 
     return () => {
       cancelled = true
+      trackRef.current = null
       // Stop the current stream's tracks BEFORE the next effect run requests a
       // new one — iOS Safari won't grant the second camera while the first is
       // still live.
@@ -125,7 +143,74 @@ export function useCamera(): UseCameraResult {
     }
   }, [facingMode])
 
-  return { videoRef, status, error, facingMode, canSwitch, switching, switchCamera }
+  return {
+    videoRef,
+    status,
+    error,
+    facingMode,
+    canSwitch,
+    switching,
+    switchCamera,
+    focusAt,
+  }
+}
+
+/** Image Capture extensions not yet in TypeScript's DOM lib. */
+interface ImageCaptureCapabilities {
+  focusMode?: string[]
+  exposureMode?: string[]
+}
+
+interface ImageCaptureConstraintSet {
+  pointsOfInterest?: { x: number; y: number }[]
+  focusMode?: string
+  exposureMode?: string
+}
+
+/**
+ * Tap-to-focus via the Image Capture 3A constraints. `pointsOfInterest` is a
+ * normalized sensor coordinate; `single-shot` focus/exposure matches a phone
+ * camera tap (meter once at that point) when the device advertises it.
+ */
+async function focusTrackAt(
+  track: MediaStreamTrack | null,
+  x: number,
+  y: number,
+): Promise<void> {
+  if (!track || track.readyState !== 'live') return
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return
+
+  const nx = Math.min(1, Math.max(0, x))
+  const ny = Math.min(1, Math.max(0, y))
+  const point = { x: nx, y: ny }
+
+  const caps = (typeof track.getCapabilities === 'function'
+    ? track.getCapabilities()
+    : {}) as ImageCaptureCapabilities
+
+  const advanced: ImageCaptureConstraintSet = {
+    pointsOfInterest: [point],
+  }
+  if (caps.focusMode?.includes('single-shot')) {
+    advanced.focusMode = 'single-shot'
+  }
+  if (caps.exposureMode?.includes('single-shot')) {
+    advanced.exposureMode = 'single-shot'
+  }
+
+  try {
+    await track.applyConstraints({
+      advanced: [advanced],
+    } as unknown as MediaTrackConstraints)
+  } catch {
+    try {
+      await track.applyConstraints({
+        advanced: [{ pointsOfInterest: [point] }],
+      } as unknown as MediaTrackConstraints)
+    } catch {
+      /* Device rejected the 3A hint — the on-screen reticle still stands in. */
+    }
+  }
 }
 
 function describeCameraError(err: unknown): string {

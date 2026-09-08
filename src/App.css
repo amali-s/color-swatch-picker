@@ -364,7 +364,7 @@
 /* Bottom tab bar — persistent across both tabs, cream surface. */
 .bottom-nav {
   --nav-btn-w: 84px;
-  --nav-btn-h: 60px;
+  --nav-btn-h: 72px;
   --nav-gap: 20px;
   display: flex;
   align-items: center;
@@ -408,8 +408,14 @@
   border-radius: 12px;
   background: transparent;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
+}
+
+.bottom-nav__label {
+  color: var(--text-secondary);
 }
 
 .bottom-nav__button:focus-visible {
@@ -700,13 +706,65 @@
 
 /* ---- Capture moment (Phase 4) ---- */
 
-/* The viewport is the capture surface: press-and-hold anywhere on it. */
+/* The viewport is the capture surface: press-and-hold anywhere on it.
+   A tap (or the start of a hold) also meters/focuses at that point, with a
+   phone-camera reticle sitting on the press. */
 .camera-viewport {
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   cursor: pointer;
   transform-origin: 50% 50%;
+}
+
+/* Cream rounded square, same 8px radius as the capture card. Scales in on
+   tap then fades — the hardware 3A change is silent, so this is the signal. */
+.focus-reticle {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+  border: 2px solid rgba(255, 248, 240, 0.95);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 4;
+  box-shadow: 0 0 0 1px rgba(27, 35, 35, 0.28);
+  transform: translate(-50%, -50%);
+  animation: focusReticle 1.05s var(--ease-snap) both;
+}
+
+.focus-reticle.is-reduced {
+  animation-name: focusReticleReduced;
+}
+
+@keyframes focusReticle {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.28);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+}
+
+@keyframes focusReticleReduced {
+  0%,
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* Live feed and the frozen capture frame both fill the viewport with
@@ -1115,6 +1173,9 @@
   }
   .switch-camera-icon {
     transition: color var(--dur-quick) var(--ease-snap);
+  }
+  .focus-reticle {
+    animation-name: focusReticleReduced;
   }
   .capture-card__glow {
     display: none;
