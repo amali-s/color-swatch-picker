@@ -474,11 +474,15 @@
   translate: 0 -50%;
 }
 
+/* Loaders are scenery: presses fall through to the viewport. A filled
+   container always takes the hit, even mid-settle, so it is never mistaken for
+   the empty space that triggers a retake. */
 .capture-chip--loader {
   width: 175px;
   height: var(--chip-loader-height, 36px);
   padding: 0 12px;
   background: rgba(255, 248, 240, 0.66);
+  pointer-events: none;
 }
 
 .capture-chip--swatch {
@@ -486,10 +490,23 @@
   padding: 8px;
   background: var(--layer-1);
   box-shadow: 0 4px 16px rgba(27, 35, 35, 0.18);
+  touch-action: none;
 }
 
-.capture-chip:not(.is-interactive) {
-  pointer-events: none;
+.capture-chip.is-draggable {
+  cursor: grab;
+}
+
+/* Lifted off the frame while it is being moved, and above its neighbours. The
+   inner buttons carry their own `cursor: pointer`, so they need overriding. */
+.capture-chip.is-dragging,
+.capture-chip.is-dragging button {
+  cursor: grabbing;
+}
+
+.capture-chip.is-dragging {
+  z-index: 5;
+  box-shadow: 0 8px 24px rgba(27, 35, 35, 0.28);
 }
 
 .capture-chip__copy {
@@ -770,10 +787,15 @@
 /* Live feed and the frozen capture frame both fill the viewport with
    object-fit: cover; the gradient on .camera-viewport shows through only while
    the camera is pending/errored (feed hidden). The frozen frame paints over the
-   live feed after capture so revealed chips sit on the image they came from. */
+   live feed after capture so revealed chips sit on the image they came from.
+
+   Pinch zoom is painted onto this layer as `translate(...) scale(...)` about
+   the viewport center (see usePinchZoom); the capture crop inverts exactly
+   that transform, which is what makes the frozen frame match the preview. */
 .camera-feed-layer {
   position: absolute;
   inset: 0;
+  transform-origin: 50% 50%;
   /* ~100ms each way; 160ms × 5/8 maps onto --dur-quick without a new token. */
   transition: opacity calc(var(--dur-quick) * 5 / 8) var(--ease-snap);
 }
@@ -1020,6 +1042,9 @@
   z-index: 4;
 }
 
+/* A label, not a target: the whole captured frame retakes, so the button must
+   not swallow taps that land on it. It stays a real <button> so keyboard users
+   still have a control to focus and activate. */
 .retake-btn {
   position: absolute;
   left: 50%;
@@ -1030,6 +1055,7 @@
   color: var(--layer-1);
   text-shadow: 0 1px 6px rgba(27, 35, 35, 0.35);
   z-index: 3;
+  pointer-events: none;
 }
 
 .retake-btn--enter {

@@ -6,6 +6,7 @@ import { copyText } from '../lib/clipboard';
 import { useCamera } from '../hooks/useCamera';
 import { useColorExtraction } from '../hooks/useColorExtraction';
 import { useHoldTimer } from '../hooks/useHoldTimer';
+import { usePinchZoom } from '../hooks/usePinchZoom';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { useFeedLuminance } from '../hooks/useFeedLuminance';
 import {
@@ -18,7 +19,8 @@ import {
   STAGGER,
   STAGGER_REVERSE,
 } from '../capture/motion';
-import { coverPointToNorm } from '../capture/videoCoords';
+import { NO_ZOOM, coverPointToNorm, coverZoomCrop } from '../capture/videoCoords';
+import type { ZoomTransform } from '../capture/videoCoords';
 import type { ChipAnchor, ChipPhase } from '../components/FloatingChip';
 import type { Swatch } from '../types';
 
@@ -36,6 +38,11 @@ interface ChipLayout {
 interface Size {
   w: number;
   h: number;
+}
+
+interface Point {
+  x: number;
+  y: number;
 }
 
 /** Forward morph / reverse retake. `live` covers idle, holding, and analyzing. */
@@ -58,6 +65,10 @@ const CHIP_LAYOUT: ChipLayout[] = [
 // Keep a chip's clamped center at least this far from the viewport edge (px),
 // so the whole ~150px pill stays on screen (point-only clamping isn't enough).
 const CHIP_MARGIN = 12;
+
+// Pointer travel (px) allowed before a press on the captured frame stops
+// counting as a "tap to retake" — a dragged chip must never retake.
+const TAP_SLOP = 10;
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
@@ -108,8 +119,12 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   // Measured size of each revealed chip, used for size-aware edge clamping.
   // `null` until the hidden sizer has been laid out.
   const [chipSizes, setChipSizes] = useState<(Size | null)[]>([]);
+  // Where the user has dragged each revealed chip (center, viewport px).
+  // Overrides the blob anchor until the next retake.
+  const [chipDrags, setChipDrags] = useState<(Point | null)[]>([]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
+  const feedLayerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const switchFreezeRef = useRef<HTMLCanvasElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
@@ -126,6 +141,14 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     null,
   );
   const reticleIdRef = useRef(0);
+
+  // Live digital zoom. Owned here (not inside usePinchZoom) so the capture and
+  // tap-to-focus paths can read it regardless of hook ordering.
+  const zoomRef = useRef<ZoomTransform>(NO_ZOOM);
+  // Where a press on the captured frame started, for tap-vs-drag on retake.
+  const tapRef = useRef<{ id: number; x: number; y: number } | null>(null);
+  // Chip center (viewport px) when the current chip drag began.
+  const dragBaseRef = useRef<Point | null>(null);
 
   const accentRef = useRef('#0095cc');
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -186,6 +209,22 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
       };
     });
   }, [detected, result, viewportBox, chipSizes]);
+
+  // A dragged chip owns its position outright: the user has overruled the blob
+  // anchor, so it stays put until the next retake clears the override.
+  const chipDestinations = useMemo<ChipLayout[]>(() => {
+    return chipPlacements.map((placement, i) => {
+      const drag = chipDrags[i];
+      if (!drag || !viewportBox.w || !viewportBox.h) return placement;
+      return {
+        position: {
+          left: `${(drag.x / viewportBox.w) * 100}%`,
+          top: `${(drag.y / viewportBox.h) * 100}%`,
+        },
+        anchor: 'center' as const,
+      };
+    });
+  }, [chipPlacements, chipDrags, viewportBox]);
 
   useEffect(() => {
     const value = getComputedStyle(document.documentElement)
@@ -253,6 +292,9 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     [clearToastTimers],
   );
 
+  // Captures what the user can actually see: the sensor is cropped to the
+  // zoomed viewfinder, so extraction (and every blob anchor derived from it)
+  // is in the same space as the frozen frame the chips land on.
   const grabFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -262,13 +304,23 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     const height = video.videoHeight;
     if (!width || !height) return false;
 
-    canvas.width = width;
-    canvas.height = height;
+    const viewport = viewportRef.current;
+    const crop =
+      coverZoomCrop(
+        viewport?.clientWidth ?? 0,
+        viewport?.clientHeight ?? 0,
+        width,
+        height,
+        zoomRef.current,
+      ) ?? { sx: 0, sy: 0, sw: width, sh: height };
+
+    canvas.width = crop.sw;
+    canvas.height = crop.sh;
     const ctx = canvas.getContext('2d');
     if (!ctx) return false;
-    ctx.drawImage(video, 0, 0, width, height);
+    ctx.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.sw, crop.sh);
 
-    extract(ctx.getImageData(0, 0, width, height));
+    extract(ctx.getImageData(0, 0, crop.sw, crop.sh));
     return true;
   }, [extract, videoRef]);
 
@@ -323,6 +375,20 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   }, [after, reduced, grabFrame, paintRing]);
 
   const hold = useHoldTimer(HOLD_THRESHOLD_MS, capture, onHoldTick);
+
+  const cameraReady = cameraStatus === 'ready';
+  const isCaptured = hold.state === 'captured';
+  const inputLocked = story === 'returning' || story === 'revealing';
+  const failed =
+    isCaptured &&
+    story === 'live' &&
+    (grabFailed ||
+      extractStatus === 'error' ||
+      (extractStatus === 'done' && detected.length === 0));
+  // Once the frame is frozen, the viewport itself is the retake target —
+  // everything on it except a filled swatch container.
+  const canTapRetake = isCaptured && !failed && (story === 'revealing' || story === 'revealed');
+  const feedDark = useFeedLuminance(videoRef, cameraReady && story === 'live' && !isCaptured);
 
   useEffect(() => {
     const glow = glowRef.current;
@@ -398,7 +464,9 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     setCopiedId(null);
     setGrabFailed(false);
     setChipSizes([]);
+    setChipDrags([]);
     sizerRefs.current = [];
+    dragBaseRef.current = null;
     capturedAtRef.current = 0;
     setReticle(null);
     const viewport = viewportRef.current;
@@ -416,34 +484,26 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     setReticle((current) => (current?.id === id ? null : current));
   }, []);
 
-  const onViewportPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      hold.start();
-      if (switching) return;
+  // A second finger means the user is framing, not swatching — drop the hold
+  // so a pinch can never trip the capture.
+  const onPinchStart = useCallback(() => {
+    if (hold.state === 'holding') hold.cancel();
+    resetVisuals();
+    setReticle(null);
+  }, [hold, resetVisuals]);
 
-      const viewport = viewportRef.current;
-      const video = videoRef.current;
-      if (!viewport) return;
-
-      const rect = viewport.getBoundingClientRect();
-      const px = event.clientX - rect.left;
-      const py = event.clientY - rect.top;
-      reticleIdRef.current += 1;
-      const id = reticleIdRef.current;
-      setReticle({ id, x: px, y: py });
-
-      const norm = coverPointToNorm(
-        px,
-        py,
-        rect.width,
-        rect.height,
-        video?.videoWidth ?? 0,
-        video?.videoHeight ?? 0,
-      );
-      if (norm) focusAt(norm.x, norm.y);
-    },
-    [focusAt, hold, switching, videoRef],
-  );
+  const {
+    pointerCount: fingersDown,
+    onPointerDown: onPinchPointerDown,
+    onPointerUp: onPinchPointerUp,
+    reset: resetZoom,
+  } = usePinchZoom({
+    enabled: cameraReady && !isCaptured && !inputLocked && !switching,
+    viewportRef,
+    layerRef: feedLayerRef,
+    transformRef: zoomRef,
+    onPinchStart,
+  });
 
   const paintSwitchFreeze = useCallback(() => {
     const video = videoRef.current;
@@ -469,16 +529,23 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     }
     if (!reduced) setSwitchRotation((deg) => deg + 180);
 
+    // The other camera has its own framing, so zoom does not carry over. The
+    // reset rides the fade-out, where the layer is already invisible — snapping
+    // it while the frozen flip frame is on screen would read as a glitch.
     const startFlip = () => {
       flipLockRef.current = true;
       if (reduced) {
+        resetZoom();
         switchCamera();
         return;
       }
       paintSwitchFreeze();
       setFreezeOn(true);
       setFeedFaded(true);
-      after(FEED_FADE_MS, () => switchCamera());
+      after(FEED_FADE_MS, () => {
+        resetZoom();
+        switchCamera();
+      });
     };
 
     // Keep CaptureTarget mounted through the press-in spring-back (160ms)
@@ -488,7 +555,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     } else {
       startFlip();
     }
-  }, [after, hold, paintSwitchFreeze, reduced, resetVisuals, switchCamera, switching]);
+  }, [after, hold, paintSwitchFreeze, reduced, resetVisuals, resetZoom, switchCamera, switching]);
 
   useEffect(() => {
     if (switching) {
@@ -518,6 +585,126 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     after(cardInAt + DUR_BASE, instantReset);
   }, [story, reduced, instantReset, clearTimers, after, chipCount]);
 
+  const onViewportPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      onPinchPointerDown(event);
+
+      // Captured: the press is a candidate retake tap. Filled chips stop their
+      // own pointers from reaching here, so anything that arrives is "not a
+      // swatch container".
+      if (isCaptured) {
+        tapRef.current = canTapRetake
+          ? { id: event.pointerId, x: event.clientX, y: event.clientY }
+          : null;
+        return;
+      }
+
+      if (!cameraReady || inputLocked) return;
+      // The second finger of a pinch must not start (or re-arm) a hold.
+      if (fingersDown() > 1) return;
+
+      hold.start();
+      if (switching) return;
+
+      const viewport = viewportRef.current;
+      const video = videoRef.current;
+      if (!viewport) return;
+
+      const rect = viewport.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      reticleIdRef.current += 1;
+      const id = reticleIdRef.current;
+      setReticle({ id, x: px, y: py });
+
+      const norm = coverPointToNorm(
+        px,
+        py,
+        rect.width,
+        rect.height,
+        video?.videoWidth ?? 0,
+        video?.videoHeight ?? 0,
+        zoomRef.current,
+      );
+      if (norm) focusAt(norm.x, norm.y);
+    },
+    [
+      cameraReady,
+      canTapRetake,
+      fingersDown,
+      focusAt,
+      hold,
+      inputLocked,
+      isCaptured,
+      onPinchPointerDown,
+      switching,
+      videoRef,
+    ],
+  );
+
+  const onViewportPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      onPinchPointerUp(event);
+      onHoldEnd();
+
+      const tap = tapRef.current;
+      tapRef.current = null;
+      if (!tap || tap.id !== event.pointerId || !canTapRetake) return;
+      if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TAP_SLOP) return;
+      onRetake();
+    },
+    [canTapRetake, onHoldEnd, onPinchPointerUp, onRetake],
+  );
+
+  const onViewportPointerCancel = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      onPinchPointerUp(event);
+      tapRef.current = null;
+      onHoldEnd();
+    },
+    [onHoldEnd, onPinchPointerUp],
+  );
+
+  const onViewportPointerLeave = useCallback(() => {
+    tapRef.current = null;
+    onHoldEnd();
+  }, [onHoldEnd]);
+
+  const onChipDragStart = useCallback((rect: DOMRect) => {
+    const viewport = viewportRef.current?.getBoundingClientRect();
+    if (!viewport) return;
+    dragBaseRef.current = {
+      x: rect.left + rect.width / 2 - viewport.left,
+      y: rect.top + rect.height / 2 - viewport.top,
+    };
+  }, []);
+
+  // Same size-aware clamp the blob anchors use, so a dragged pill cannot be
+  // pushed half off the viewport.
+  const onChipDragMove = useCallback(
+    (index: number, dx: number, dy: number) => {
+      const base = dragBaseRef.current;
+      if (!base || !viewportBox.w || !viewportBox.h) return;
+      const size = chipSizes[index];
+      const halfW = size ? size.w / 2 : 0;
+      const halfH = size ? size.h / 2 : 0;
+      const next = {
+        x: clamp(base.x + dx, halfW + CHIP_MARGIN, viewportBox.w - halfW - CHIP_MARGIN),
+        y: clamp(base.y + dy, halfH + CHIP_MARGIN, viewportBox.h - halfH - CHIP_MARGIN),
+      };
+      setChipDrags((prev) => {
+        const drags = prev.slice();
+        drags[index] = next;
+        return drags;
+      });
+    },
+    [chipSizes, viewportBox],
+  );
+
+  const onChipDragEnd = useCallback(() => {
+    dragBaseRef.current = null;
+  }, []);
+
   const copyChip = useCallback(
     async (swatch: Swatch) => {
       const hex = `#${swatch.hex}`;
@@ -542,15 +729,6 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   useEffect(() => clearTimers, [clearTimers]);
   useEffect(() => clearToastTimers, [clearToastTimers]);
 
-  const cameraReady = cameraStatus === 'ready';
-  const isCaptured = hold.state === 'captured';
-  const feedDark = useFeedLuminance(videoRef, cameraReady && story === 'live' && !isCaptured);
-  const failed =
-    isCaptured &&
-    story === 'live' &&
-    (grabFailed ||
-      extractStatus === 'error' ||
-      (extractStatus === 'done' && detected.length === 0));
   const showTarget = cameraReady && !failed;
   const targetLabel =
     hold.state === 'holding'
@@ -558,8 +736,6 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
       : hold.state === 'captured' && story !== 'returning'
         ? 'Reading colors'
         : 'Hold to swatch';
-
-  const inputLocked = story === 'returning' || story === 'revealing';
 
   const chipPhase = (): ChipPhase => {
     if (story === 'returning') return 'returning';
@@ -577,14 +753,13 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
       <div
         ref={viewportRef}
         className={`camera-viewport${feedDark ? ' is-dark-feed' : ''}`}
-        onPointerDown={
-          cameraReady && !inputLocked && !isCaptured ? onViewportPointerDown : undefined
-        }
-        onPointerUp={onHoldEnd}
-        onPointerLeave={onHoldEnd}
-        onPointerCancel={onHoldEnd}
+        onPointerDown={onViewportPointerDown}
+        onPointerUp={onViewportPointerUp}
+        onPointerLeave={onViewportPointerLeave}
+        onPointerCancel={onViewportPointerCancel}
       >
         <div
+          ref={feedLayerRef}
           className={[
             'camera-feed-layer',
             cameraReady ? '' : 'is-hidden',
@@ -636,7 +811,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
             {Array.from({ length: chipCount }, (_, i) => {
               const swatch = detected[i] ?? null;
               const slot = CHIP_LAYOUT[i % CHIP_LAYOUT.length];
-              const dest = chipPlacements[i] ?? slot;
+              const dest = chipDestinations[i] ?? slot;
               return (
                 <CaptureChip
                   key={i}
@@ -656,6 +831,9 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
                   }}
                   onToggle={swatch ? () => toggleChip(swatch) : () => {}}
                   onCopy={swatch ? () => copyChip(swatch) : () => {}}
+                  onDragStart={onChipDragStart}
+                  onDragMove={(dx, dy) => onChipDragMove(i, dx, dy)}
+                  onDragEnd={onChipDragEnd}
                 />
               );
             })}

@@ -26,13 +26,27 @@ interface Props {
   sizerRef?: (el: HTMLDivElement | null) => void;
   onToggle: () => void;
   onCopy: () => void;
+  /** Called once the press clears the drag threshold, with the pill's rect
+   *  as it was when the press began. */
+  onDragStart?: (rect: DOMRect) => void;
+  /** Cumulative pointer travel since the press began. */
+  onDragMove?: (dx: number, dy: number) => void;
+  onDragEnd?: () => void;
 }
+
+/** Pointer travel (px) before a press on a landed chip becomes a drag. */
+const DRAG_SLOP = 8;
 
 /**
  * One capture chip through the whole story: idle em-dashes at the CHIP_LAYOUT
  * slot, scramble while holding/reading, then a FLIP travel to the blob
  * anchor while the reels settle and the square fills. Never two pills for
  * the same color.
+ *
+ * Once landed, the pill is also draggable: the blob anchor is a guess, and a
+ * chip sitting on the part of the photo the user wants to see should be
+ * movable. Dragging only exists for a filled swatch — a loader has nothing to
+ * reposition.
  */
 export default function CaptureChip({
   index,
@@ -49,11 +63,25 @@ export default function CaptureChip({
   sizerRef,
   onToggle,
   onCopy,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const firstRectRef = useRef<DOMRect | null>(null);
   const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    rect: DOMRect;
+    dragging: boolean;
+  } | null>(null);
+  // Set for the lifetime of one press, so the click that follows a drag does
+  // not also copy the hex.
+  const draggedRef = useRef(false);
   const [bookmarkMotion, setBookmarkMotion] = useState<'save' | 'unsave' | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const atDest = phase === 'settling' || phase === 'revealed';
   const layout = atDest
@@ -63,6 +91,7 @@ export default function CaptureChip({
   const interactive = phase === 'revealed' && Boolean(swatch);
   const showHex = (phase === 'settling' || phase === 'revealed') && Boolean(swatch);
   const showBookmark = asSwatch && Boolean(swatch);
+  const draggable = interactive && Boolean(onDragMove);
 
   useLayoutEffect(() => {
     const el = rootRef.current;
@@ -110,12 +139,74 @@ export default function CaptureChip({
     };
   }, [phase, animate, travelDelay]);
 
+  // A drag moves the pill without touching `transform`, so the FLIP baseline
+  // goes stale and the retake would fly the chip out from its old spot.
+  useLayoutEffect(() => {
+    if (phase !== 'revealed') return;
+    const el = rootRef.current;
+    if (el) firstRectRef.current = el.getBoundingClientRect();
+  }, [phase, layout.position.left, layout.position.top]);
+
   useEffect(
     () => () => {
       if (burstTimerRef.current) clearTimeout(burstTimerRef.current);
     },
     [],
   );
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    // A filled container is not "empty space": swallow the press so the
+    // viewport does not read it as a tap to retake.
+    if (asSwatch) event.stopPropagation();
+    draggedRef.current = false;
+    if (!draggable) return;
+    const el = rootRef.current;
+    if (!el) return;
+    pressRef.current = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      rect: el.getBoundingClientRect(),
+      dragging: false,
+    };
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const press = pressRef.current;
+    if (!press || press.id !== event.pointerId) return;
+    const dx = event.clientX - press.x;
+    const dy = event.clientY - press.y;
+
+    if (!press.dragging) {
+      if (Math.hypot(dx, dy) < DRAG_SLOP) return;
+      press.dragging = true;
+      draggedRef.current = true;
+      setDragging(true);
+      // Keep receiving moves once the pointer slides off the pill.
+      rootRef.current?.setPointerCapture(event.pointerId);
+      onDragStart?.(press.rect);
+    }
+    onDragMove?.(dx, dy);
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const press = pressRef.current;
+    if (!press || press.id !== event.pointerId) return;
+    pressRef.current = null;
+    if (!press.dragging) return;
+    setDragging(false);
+    if (rootRef.current?.hasPointerCapture(event.pointerId)) {
+      rootRef.current.releasePointerCapture(event.pointerId);
+    }
+    onDragEnd?.();
+  };
+
+  const handleClickCapture = (event: React.MouseEvent) => {
+    if (!draggedRef.current) return;
+    draggedRef.current = false;
+    event.stopPropagation();
+    event.preventDefault();
+  };
 
   const handleToggle = () => {
     if (bookmarkMotion) return;
@@ -139,6 +230,8 @@ export default function CaptureChip({
     interactive ? 'is-interactive' : '',
     phase === 'revealed' ? 'is-landed' : '',
     copied ? 'is-copied' : '',
+    draggable ? 'is-draggable' : '',
+    dragging ? 'is-dragging' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -148,7 +241,17 @@ export default function CaptureChip({
 
   return (
     <>
-      <div ref={rootRef} className={className} style={layout.position as CSSProperties} aria-hidden={!interactive}>
+      <div
+        ref={rootRef}
+        className={className}
+        style={layout.position as CSSProperties}
+        aria-hidden={!interactive}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onClickCapture={handleClickCapture}
+      >
         <button
           type="button"
           className="capture-chip__copy"
