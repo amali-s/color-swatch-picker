@@ -13,6 +13,8 @@ export const HOLD_THRESHOLD_MS = 3500;
 export const DUR_QUICK = 160; // press feedback, freeze punch, square fill
 export const DUR_FLASH = 180; // capture flash, card exit
 export const DUR_BASE = 220; // chip travel, canvas blend, standard transitions
+/** Wait after hold starts before loader pills appear, so a tap does not flash them. */
+export const LOADER_SHOW_DELAY_MS = 150;
 export const STAGGER = 60; // gap between the three chips revealing
 /** Reverse of STAGGER for retake — last chip to land is first to leave. */
 export const STAGGER_REVERSE = 40;

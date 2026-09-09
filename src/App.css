@@ -437,7 +437,7 @@
   --chip-clearance: 48px; /* air between the card and the nearest pill */
   --chip-stack-gap: 32px;
 
-  /* Idle / null-anchor slots. The capture card is full-width, so a pill at
+  /* Hold / null-anchor slots. The capture card is full-width, so a pill at
      ~43% always sits on it. Keep two in the space above the card and one
      well below. `top` is the chip center (matching the translate offset). */
   --chip-0-left: 50%;
@@ -472,6 +472,21 @@
 }
 .capture-chip--left {
   translate: 0 -50%;
+}
+
+/* Hold-in / cancel-out. Independent `scale` so this never fights the FLIP
+   `transform` used on settle / retake. */
+.capture-chip.is-gated {
+  opacity: 0;
+  scale: 0.98;
+  transition:
+    opacity var(--dur-quick) var(--ease-snap-in),
+    scale var(--dur-quick) var(--ease-snap-in);
+}
+.capture-chip.is-gated.is-entered {
+  opacity: 1;
+  scale: 1;
+  transition-timing-function: var(--ease-snap);
 }
 
 /* Loaders are scenery: presses fall through to the viewport. A filled
@@ -1163,6 +1178,14 @@
   .bottom-nav__indicator,
   .bottom-nav__indicator.is-ready {
     transition: none;
+  }
+  .capture-chip.is-gated,
+  .capture-chip.is-gated.is-entered {
+    transition: none;
+  }
+  .capture-chip.is-gated.is-entered {
+    opacity: 1;
+    scale: 1;
   }
   .retake-btn--enter,
   .retake-btn--exit,

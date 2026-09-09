@@ -22,6 +22,8 @@ interface Props {
   animate: boolean;
   /** Stagger before travel starts, in ms. */
   travelDelay: number;
+  /** Fade in (`in`) or fade out (`out`) — parent unmounts after the exit. */
+  gate: 'in' | 'out';
   /** Hidden revealed-size probe for the parent's size-aware clamp. */
   sizerRef?: (el: HTMLDivElement | null) => void;
   onToggle: () => void;
@@ -38,10 +40,10 @@ interface Props {
 const DRAG_SLOP = 8;
 
 /**
- * One capture chip through the whole story: idle em-dashes at the CHIP_LAYOUT
- * slot, scramble while holding/reading, then a FLIP travel to the blob
- * anchor while the reels settle and the square fills. Never two pills for
- * the same color.
+ * One capture chip through the whole story: absent on the idle viewfinder,
+ * scramble while holding/reading (fades in after a short hold beat), then a
+ * FLIP travel to the blob anchor while the reels settle and the square fills.
+ * Never two pills for the same color.
  *
  * Once landed, the pill is also draggable: the blob anchor is a guess, and a
  * chip sitting on the part of the photo the user wants to see should be
@@ -60,6 +62,7 @@ export default function CaptureChip({
   copied,
   animate,
   travelDelay,
+  gate,
   sizerRef,
   onToggle,
   onCopy,
@@ -82,6 +85,8 @@ export default function CaptureChip({
   const draggedRef = useRef(false);
   const [bookmarkMotion, setBookmarkMotion] = useState<'save' | 'unsave' | null>(null);
   const [dragging, setDragging] = useState(false);
+  // First paint is faded out so the hold-in transition has a from-state.
+  const [entered, setEntered] = useState(() => !animate);
 
   const atDest = phase === 'settling' || phase === 'revealed';
   const layout = atDest
@@ -100,7 +105,7 @@ export default function CaptureChip({
     if (phase === 'idle' || phase === 'scanning') {
       el.style.transition = '';
       el.style.transform = '';
-      firstRectRef.current = el.getBoundingClientRect();
+      if (entered) firstRectRef.current = el.getBoundingClientRect();
       return;
     }
 
@@ -137,7 +142,26 @@ export default function CaptureChip({
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [phase, animate, travelDelay]);
+  }, [phase, animate, travelDelay, entered]);
+
+  useLayoutEffect(() => {
+    if (gate === 'out') {
+      setEntered(false);
+      return;
+    }
+    if (!animate) {
+      setEntered(true);
+      return;
+    }
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [gate, animate]);
 
   // A drag moves the pill without touching `transform`, so the FLIP baseline
   // goes stale and the retake would fly the chip out from its old spot.
@@ -232,6 +256,8 @@ export default function CaptureChip({
     copied ? 'is-copied' : '',
     draggable ? 'is-draggable' : '',
     dragging ? 'is-dragging' : '',
+    'is-gated',
+    entered ? 'is-entered' : '',
   ]
     .filter(Boolean)
     .join(' ');

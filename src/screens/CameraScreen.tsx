@@ -16,6 +16,7 @@ import {
   DUR_QUICK,
   EASE_SNAP,
   HOLD_THRESHOLD_MS,
+  LOADER_SHOW_DELAY_MS,
   STAGGER,
   STAGGER_REVERSE,
 } from '../capture/motion';
@@ -48,11 +49,14 @@ interface Point {
 /** Forward morph / reverse retake. `live` covers idle, holding, and analyzing. */
 type Story = 'live' | 'revealing' | 'revealed' | 'returning';
 
-/** Idle/analyzing loader count. Reveal uses `detected.length` (1–3 today, cap 6). */
+/** Hold/analyzing loader count. Reveal uses `detected.length` (1–3 today, cap 6). */
 const CHIP_COUNT = 3;
+
+/** Loader pills are absent until a hold is committed, then fade out on cancel. */
+type ChipGate = 'hidden' | 'in' | 'out';
 const MAX_CHIPS = 6;
 
-// Idle seats and null-anchor fallback. Positions live as CSS variables on
+// Hold/analyze seats and null-anchor fallback. Positions live as CSS variables on
 // .camera-viewport so they stay clear of the full-width capture card (two
 // above, one below — a pill at ~43% always sat on the card). Blob-anchored
 // reveal still uses chipPlacements; de-collision of those is out of scope.
@@ -82,8 +86,9 @@ const FEED_FADE_MS = (DUR_QUICK * 5) / 8;
  * paints a cream ring from the hold timer's onTick; on capture the flash +
  * freeze punch still snap, then a minimum analyzing beat lets them finish
  * before the loader pills morph into hex chips (count follows the merged
- * palette, so a two-color scene does not leave a blank third slot). Retake
- * plays that sequence backward.
+ * palette, so a two-color scene does not leave a blank third slot). Loader
+ * pills stay off the idle viewfinder; they fade in after a short hold beat
+ * so a tap does not flash them. Retake plays that sequence backward.
  */
 export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   const reduced = usePrefersReducedMotion();
@@ -122,6 +127,9 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   // Where the user has dragged each revealed chip (center, viewport px).
   // Overrides the blob anchor until the next retake.
   const [chipDrags, setChipDrags] = useState<(Point | null)[]>([]);
+  // Loader pills: hidden on the idle viewfinder, in after a hold beat,
+  // out while fading after a cancelled hold.
+  const [chipGate, setChipGate] = useState<ChipGate>('hidden');
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const feedLayerRef = useRef<HTMLDivElement>(null);
@@ -155,6 +163,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   const toastDwellRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastExitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastLiveRef = useRef(false);
+  const loaderShowRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const detected = useMemo<Swatch[]>(() => {
     if (!result) return [];
@@ -164,7 +173,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     });
   }, [result]);
 
-  // Idle shows the default three loaders. Once extraction lands, reveal,
+  // Hold/analyze shows the default three loaders. Once extraction lands, reveal,
   // stagger, and retake follow the merged cluster count — never a blank extra
   // slot, never more than MAX_CHIPS.
   const chipCount = detected.length > 0 ? detected.length : CHIP_COUNT;
@@ -397,6 +406,41 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     if (hold.state === 'captured') paintRing(RING_FULL);
   }, [hold.state, paintRing]);
 
+  // Loader pills stay off the idle viewfinder. A short beat after hold starts
+  // they fade in (scramble already rolling); a lift before capture fades them
+  // out. Capture keeps them up so they can morph into filled chips.
+  useEffect(() => {
+    if (hold.state === 'holding') {
+      setChipGate((gate) => (gate === 'hidden' ? gate : 'in'));
+      loaderShowRef.current = setTimeout(() => {
+        loaderShowRef.current = null;
+        setChipGate('in');
+      }, LOADER_SHOW_DELAY_MS);
+      return () => {
+        if (loaderShowRef.current) {
+          clearTimeout(loaderShowRef.current);
+          loaderShowRef.current = null;
+        }
+      };
+    }
+
+    if (hold.state === 'captured') {
+      setChipGate('in');
+      return;
+    }
+
+    setChipGate((gate) => {
+      if (gate === 'hidden' || gate === 'out') return gate;
+      return reduced ? 'hidden' : 'out';
+    });
+  }, [hold.state, reduced]);
+
+  useEffect(() => {
+    if (chipGate !== 'out') return;
+    const t = setTimeout(() => setChipGate('hidden'), DUR_QUICK);
+    return () => clearTimeout(t);
+  }, [chipGate]);
+
   // Measure destination chip size as soon as extraction lands, so the clamp is
   // applied to chipPlacements before travel starts (no land-then-jump).
   useLayoutEffect(() => {
@@ -465,6 +509,11 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     setGrabFailed(false);
     setChipSizes([]);
     setChipDrags([]);
+    setChipGate('hidden');
+    if (loaderShowRef.current) {
+      clearTimeout(loaderShowRef.current);
+      loaderShowRef.current = null;
+    }
     sizerRefs.current = [];
     dragBaseRef.current = null;
     capturedAtRef.current = 0;
@@ -728,6 +777,12 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
 
   useEffect(() => clearTimers, [clearTimers]);
   useEffect(() => clearToastTimers, [clearToastTimers]);
+  useEffect(
+    () => () => {
+      if (loaderShowRef.current) clearTimeout(loaderShowRef.current);
+    },
+    [],
+  );
 
   const showTarget = cameraReady && !failed;
   const targetLabel =
@@ -741,12 +796,19 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     if (story === 'returning') return 'returning';
     if (story === 'revealed') return 'revealed';
     if (story === 'revealing') return 'settling';
-    if (hold.state === 'idle') return 'idle';
+    // Keep reels rolling through a cancelled-hold fade-out.
+    if (hold.state === 'idle' && chipGate !== 'out') return 'idle';
     return 'scanning';
   };
 
   const travelDelay = (i: number) =>
     story === 'returning' ? (chipCount - 1 - i) * STAGGER_REVERSE : i * STAGGER;
+
+  // Only `in` / `out` mount chips. Idle + live never does, even if gate is stale
+  // (HMR hook-order shift used to leave a non-'hidden' value and keep the pills).
+  const showChips =
+    chipGate === 'out' ||
+    (chipGate === 'in' && (hold.state !== 'idle' || story !== 'live'));
 
   return (
     <div className="screen" style={{ background: 'var(--layer-1)' }}>
@@ -808,35 +870,37 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
               pressed={hold.state === 'holding' && !reduced}
               animate={!reduced}
             />
-            {Array.from({ length: chipCount }, (_, i) => {
-              const swatch = detected[i] ?? null;
-              const slot = CHIP_LAYOUT[i % CHIP_LAYOUT.length];
-              const dest = chipDestinations[i] ?? slot;
-              return (
-                <CaptureChip
-                  key={i}
-                  index={i}
-                  phase={chipPhase()}
-                  slot={slot.position}
-                  slotAnchor={slot.anchor}
-                  destination={dest.position}
-                  destAnchor={dest.anchor}
-                  swatch={swatch}
-                  saved={Boolean(swatch && savedIds.has(swatch.id))}
-                  copied={Boolean(swatch && copiedId === swatch.id)}
-                  animate={!reduced}
-                  travelDelay={travelDelay(i)}
-                  sizerRef={(el) => {
-                    sizerRefs.current[i] = el;
-                  }}
-                  onToggle={swatch ? () => toggleChip(swatch) : () => {}}
-                  onCopy={swatch ? () => copyChip(swatch) : () => {}}
-                  onDragStart={onChipDragStart}
-                  onDragMove={(dx, dy) => onChipDragMove(i, dx, dy)}
-                  onDragEnd={onChipDragEnd}
-                />
-              );
-            })}
+            {showChips &&
+              Array.from({ length: chipCount }, (_, i) => {
+                const swatch = detected[i] ?? null;
+                const slot = CHIP_LAYOUT[i % CHIP_LAYOUT.length];
+                const dest = chipDestinations[i] ?? slot;
+                return (
+                  <CaptureChip
+                    key={i}
+                    index={i}
+                    phase={chipPhase()}
+                    slot={slot.position}
+                    slotAnchor={slot.anchor}
+                    destination={dest.position}
+                    destAnchor={dest.anchor}
+                    swatch={swatch}
+                    saved={Boolean(swatch && savedIds.has(swatch.id))}
+                    copied={Boolean(swatch && copiedId === swatch.id)}
+                    animate={!reduced}
+                    travelDelay={travelDelay(i)}
+                    gate={chipGate === 'out' ? 'out' : 'in'}
+                    sizerRef={(el) => {
+                      sizerRefs.current[i] = el;
+                    }}
+                    onToggle={swatch ? () => toggleChip(swatch) : () => {}}
+                    onCopy={swatch ? () => copyChip(swatch) : () => {}}
+                    onDragStart={onChipDragStart}
+                    onDragMove={(dx, dy) => onChipDragMove(i, dx, dy)}
+                    onDragEnd={onChipDragEnd}
+                  />
+                );
+              })}
           </>
         )}
 
