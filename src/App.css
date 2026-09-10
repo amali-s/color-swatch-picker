@@ -364,12 +364,12 @@
 /* Bottom tab bar — persistent across both tabs, cream surface. */
 .bottom-nav {
   --nav-btn-w: 84px;
-  --nav-btn-h: 72px;
+  --nav-btn-h: 48px;
   --nav-gap: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 24px calc(env(safe-area-inset-bottom, 0px) + 20px);
+  padding: 8px 24px calc(env(safe-area-inset-bottom, 0px) + 8px);
   background: var(--foreground);
   flex-shrink: 0;
 }

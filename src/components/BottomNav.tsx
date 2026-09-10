@@ -26,7 +26,7 @@ export default function BottomNav({ view, onChange }: Props) {
   const clusterRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLButtonElement>(null);
   const cameraRef = useRef<HTMLButtonElement>(null);
-  const [pill, setPill] = useState<PillMetrics>({ x: 0, w: 84, h: 72 });
+  const [pill, setPill] = useState<PillMetrics>({ x: 0, w: 84, h: 48 });
   const [canSlide, setCanSlide] = useState(false);
 
   const measure = useCallback(() => {
@@ -80,7 +80,7 @@ export default function BottomNav({ view, onChange }: Props) {
           onClick={() => onChange('list')}
           className="bottom-nav__button"
         >
-          <SwatchesIcon size={28} />
+          <SwatchesIcon size={14} />
           <span className="bottom-nav__label text-label-2">Swatches</span>
         </button>
         <button
@@ -90,7 +90,7 @@ export default function BottomNav({ view, onChange }: Props) {
           onClick={() => onChange('camera')}
           className="bottom-nav__button"
         >
-          <CameraIcon size={28} />
+          <CameraIcon size={14} />
           <span className="bottom-nav__label text-label-2">Camera</span>
         </button>
       </div>
