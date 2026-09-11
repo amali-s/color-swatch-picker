@@ -12,7 +12,7 @@ export default function Header({
       <h1 className="text-heading-4" style={{ color: 'var(--dark-blue)', margin: 0 }}>
         Lens swatch
       </h1>
-      <p className="text-label-1" style={{ color: 'var(--text-secondary)', marginTop: 16 }}>
+      <p className="text-label-1" style={{ color: 'var(--text-secondary)' }}>
         {subtitle}
       </p>
     </header>

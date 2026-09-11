@@ -69,7 +69,7 @@ export default function ListScreen({
   const [phase, setPhase] = useState<Phase>(() => initialPhase(swatches.length, sawEmpty));
   const [announcement, setAnnouncement] = useState('');
   const [viewMode, setViewMode] = useState<SwatchViewMode>(loadViewMode);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => swatches[0]?.id ?? null);
   const [copied, setCopied] = useState(false);
 
   const onViewMode = (mode: SwatchViewMode) => {
@@ -170,7 +170,7 @@ export default function ListScreen({
               </h2>
               <p className="empty-card__copy text-body-1">
                 {wide
-                  ? 'Open the camera or upload a photo and start collecting colors.'
+                  ? 'Open Capture or upload a photo and start collecting colors.'
                   : 'Swipe to open the camera and start collecting colors.'}
               </p>
               <PrimaryButton onClick={onOpenCamera}>Open camera</PrimaryButton>
