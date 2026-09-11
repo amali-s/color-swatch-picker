@@ -4,7 +4,8 @@ import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { MAX_ZOOM, MIN_ZOOM, usePinchZoom } from '../hooks/usePinchZoom';
 import { NO_ZOOM, clampZoomTransform, viewportPointToLayer } from '../capture/videoCoords';
 import type { ZoomTransform } from '../capture/videoCoords';
-import { DUR_BASE, DUR_FLASH } from '../capture/motion';
+import { DUR_BASE } from '../capture/motion';
+import SwatchDetailCard, { type CardBox } from './SwatchDetailCard';
 import type { Swatch } from '../types';
 
 interface Props {
@@ -26,13 +27,19 @@ interface Placed {
 /** One slow revolution every ORBIT_SECONDS; still under reduced motion. */
 const ORBIT_SECONDS = 130;
 /**
- * Chip distance from center, as a % of the wheel's diameter: desaturated
- * core → saturated rim. The max is held well inside the rim because the wheel
- * bleeds past the screen edges — at 38% even a rim chip at 3 or 9 o'clock
- * stays fully on screen at 1×.
+ * Chip distance from center, as a % of the wheel's diameter. Bright /
+ * desaturated colors sit inward; dark / saturated ones ride out toward the
+ * rim. The disc now fits on screen with an 8px inset, so the max can sit
+ * closer to the edge than the old bleed-era 38%.
  */
 const RADIUS_MIN = 22;
-const RADIUS_MAX = 38;
+const RADIUS_MAX = 42;
+/** Focus zoom: multiply the live zoom (clamped) so pinch +/− stay intact. */
+const FOCUS_ZOOM_FACTOR = 1.6;
+/** How far the focused chip slides toward the viewport center (0–1). */
+const FOCUS_PULL = 0.42;
+const CARD_W = 265;
+const CARD_H = 325;
 /**
  * On-screen center-to-center clearance between chips (px). Chip tap boxes
  * floor at 44px (see .swatch-orbit__chip), so 50px keeps two touch targets
@@ -56,10 +63,10 @@ function parseHex(hex: string): [number, number, number] | null {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** Hue (0–360) and saturation (0–1) for placing a swatch on the wheel. */
-function hexToHueSat(hex: string): { h: number; s: number } {
+/** Hue (0–360), saturation (0–1), and lightness (0–1) for placing a swatch. */
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
   const rgb = parseHex(hex);
-  if (!rgb) return { h: 0, s: 0 };
+  if (!rgb) return { h: 0, s: 0, l: 0 };
   const r = rgb[0] / 255;
   const g = rgb[1] / 255;
   const b = rgb[2] / 255;
@@ -76,14 +83,15 @@ function hexToHueSat(hex: string): { h: number; s: number } {
     if (h < 0) h += 360;
   }
   const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
-  return { h, s };
+  return { h, s, l };
 }
 
 /**
- * Lays every swatch out by true hue (angle) and saturation (distance from
- * center), then nudges hue apart along each swatch's own ring just enough to
- * clear near neighbors. Radius (which carries real color meaning) never
- * moves — only the angle bends a little to resolve crowding.
+ * Lays every swatch out by true hue (angle) and a mix of saturation +
+ * lightness (distance from center), then nudges hue apart along each swatch's
+ * own ring just enough to clear near neighbors. Radius (which carries real
+ * color meaning) never moves — only the angle bends a little to resolve
+ * crowding.
  *
  * `minDist` is the required clearance as a fraction of the wheel diameter; it
  * shrinks as the user zooms in, so nudged chips relax back toward their true
@@ -91,8 +99,9 @@ function hexToHueSat(hex: string): { h: number; s: number } {
  */
 function computePlacements(swatches: Swatch[], minDist: number): Placed[] {
   const base = swatches.map((s) => {
-    const { h, s: sat } = hexToHueSat(s.hex);
-    return { id: s.id, hex: s.hex, hue: h, radiusPct: RADIUS_MIN + sat * (RADIUS_MAX - RADIUS_MIN) };
+    const { h, s: sat, l } = hexToHsl(s.hex);
+    const t = Math.min(1, Math.max(0, 0.55 * sat + 0.45 * (1 - l)));
+    return { id: s.id, hex: s.hex, hue: h, radiusPct: RADIUS_MIN + t * (RADIUS_MAX - RADIUS_MIN) };
   });
 
   const DEG = 180 / Math.PI;
@@ -143,21 +152,44 @@ function zoomAbout(
   );
 }
 
+/** Zoom about the chip, then pan it partway toward the viewport center. */
+function focusTransform(
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  base: ZoomTransform,
+): ZoomTransform {
+  const targetZ = Math.min(MAX_ZOOM, Math.max(base.zoom * FOCUS_ZOOM_FACTOR, 1.65));
+  const zoomed = zoomAbout(targetZ, cx, cy, base, w, h);
+  return clampZoomTransform(
+    {
+      zoom: zoomed.zoom,
+      tx: zoomed.tx + (w / 2 - cx) * FOCUS_PULL,
+      ty: zoomed.ty + (h / 2 - cy) * FOCUS_PULL,
+    },
+    w,
+    h,
+    MIN_ZOOM,
+    MAX_ZOOM,
+  );
+}
+
 /**
  * The "Saved swatches" view as a color wheel: each swatch orbits at the angle
- * of its true hue and the distance its saturation earns — pale colors settle
- * near the core, bold ones ride out toward the rim. Replaces the plain
- * vertical list so the collection reads as a palette, not a log.
+ * of its true hue and a mix of saturation + lightness — pale/bright colors
+ * settle near the core, dark/saturated ones ride out toward the rim.
  *
  * Mobile-first:
- * - The wheel runs full-bleed and slightly past both screen edges.
+ * - The full disc fits in the view with 8px padding on each side.
  * - Two-finger pinch zooms (the same `usePinchZoom` the camera uses, so the
  *   gesture feels identical across tabs); once zoomed, one finger pans.
  *   − / + buttons are the single-pointer alternative, and ctrl/trackpad-pinch
  *   wheel events zoom on desktop.
  * - Chip tap boxes floor at 44px, and a press that drags or pinches never
  *   counts as a tap.
- * - Tapping a chip opens a thumb-reachable bottom sheet with Copy / Remove.
+ * - Tapping a chip zooms the view toward it and morphs the chip into a
+ *   detail card (FLIP). Pinch +/− are a separate transform, restored on close.
  *
  * Spin and zoom are painted imperatively (CSS custom properties on refs) so
  * neither re-renders React every frame — the same approach the camera's hold
@@ -169,8 +201,10 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
   const layerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const spinRef = useRef<HTMLDivElement>(null);
-  const sheetRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<ZoomTransform>(NO_ZOOM);
+  const preFocusRef = useRef<ZoomTransform>(NO_ZOOM);
+  const closeModeRef = useRef<'dismiss' | 'unsave'>('dismiss');
 
   const [stageSize, setStageSize] = useState(400);
   /** Committed zoom — updates once a gesture settles, not every frame. */
@@ -180,7 +214,10 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
   const [detail, setDetail] = useState<Swatch | null>(null);
   const detailRef = useRef<Swatch | null>(null);
   detailRef.current = detail;
-  const [sheetPhase, setSheetPhase] = useState<'in' | 'out'>('in');
+  const [focusPhase, setFocusPhase] = useState<'in' | 'out'>('in');
+  const [cardExpanded, setCardExpanded] = useState(false);
+  const [originBox, setOriginBox] = useState<CardBox | null>(null);
+  const [destBox, setDestBox] = useState<CardBox | null>(null);
   const [copied, setCopied] = useState(false);
 
   const hoverRef = useRef(false);
@@ -449,19 +486,77 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
     };
   }, [paintLayer]);
 
-  const openDetail = useCallback((swatch: Swatch) => {
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    setDetail(swatch);
-    setSheetPhase('in');
-    setCopied(false);
-  }, []);
+  const openDetail = useCallback(
+    (swatch: Swatch, chipEl: HTMLElement) => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+      const screen = chipEl.closest('.screen');
+      const vp = viewportRef.current;
+      const dot = chipEl.querySelector('.swatch-orbit__chip-dot') ?? chipEl;
+      if (screen && vp) {
+        const screenRect = screen.getBoundingClientRect();
+        const chip = dot.getBoundingClientRect();
+        setOriginBox({
+          left: chip.left - screenRect.left,
+          top: chip.top - screenRect.top,
+          width: chip.width,
+          height: chip.height,
+        });
+        setDestBox({
+          left: (screenRect.width - CARD_W) / 2,
+          top: (screenRect.height - CARD_H) / 2,
+          width: CARD_W,
+          height: CARD_H,
+        });
+        const vpRect = vp.getBoundingClientRect();
+        const cx = chip.left + chip.width / 2 - vpRect.left;
+        const cy = chip.top + chip.height / 2 - vpRect.top;
+        preFocusRef.current = { ...(tweenRef.current?.to ?? transformRef.current) };
+        zoomTo((base, w, h) => focusTransform(cx, cy, w, h, base));
+      } else {
+        setOriginBox(null);
+        setDestBox({ left: 64, top: 180, width: CARD_W, height: CARD_H });
+      }
+      setCardExpanded(reduced);
+      setDetail(swatch);
+      setFocusPhase('in');
+      setCopied(false);
+    },
+    [reduced, zoomTo],
+  );
 
-  const closeDetail = useCallback(() => {
-    if (!detailRef.current) return;
-    setSheetPhase('out');
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = setTimeout(() => setDetail(null), reduced ? 0 : DUR_FLASH);
-  }, [reduced]);
+  const closeDetail = useCallback(
+    (mode: 'dismiss' | 'unsave' = 'dismiss') => {
+      if (!detailRef.current) return;
+      closeModeRef.current = mode;
+      setFocusPhase('out');
+      setCardExpanded(false);
+      zoomTo(() => preFocusRef.current);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = setTimeout(() => {
+        const swatch = detailRef.current;
+        if (mode === 'unsave' && swatch) {
+          onRemove(swatch.id);
+          onAnnounce(`Removed #${swatch.hex}`);
+        }
+        setDetail(null);
+        setOriginBox(null);
+        setDestBox(null);
+      }, reduced ? 0 : DUR_BASE);
+    },
+    [reduced, zoomTo, onRemove, onAnnounce],
+  );
+
+  useLayoutEffect(() => {
+    if (!detail || focusPhase !== 'in' || reduced) return;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setCardExpanded(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [detail, focusPhase, reduced]);
 
   const handleCopy = useCallback(async () => {
     if (!detail) return;
@@ -473,12 +568,7 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
     copyTimerRef.current = setTimeout(() => setCopied(false), 1200);
   }, [detail, onAnnounce]);
 
-  const handleRemove = useCallback(() => {
-    if (!detail) return;
-    onRemove(detail.id);
-    onAnnounce(`Removed #${detail.hex}`);
-    closeDetail();
-  }, [detail, onRemove, onAnnounce, closeDetail]);
+  const handleRemove = useCallback(() => closeDetail('unsave'), [closeDetail]);
 
   useEffect(
     () => () => {
@@ -488,13 +578,13 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
     [],
   );
 
-  // Sheet focus: move into it on open, hand focus back to the chip on close.
+  // Card focus: move into it on open, hand focus back to the chip on close.
   useEffect(() => {
     if (!detail) return;
     const previous = document.activeElement as HTMLElement | null;
-    sheetRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    cardRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeDetail();
+      if (e.key === 'Escape') closeDetail('dismiss');
     };
     document.addEventListener('keydown', onKey);
     return () => {
@@ -507,7 +597,7 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
 
   return (
     <>
-      <div className={`swatch-orbit${entering ? ' is-entering' : ''}`}>
+      <div className={`swatch-orbit${entering ? ' is-entering' : ''}${detail ? ' is-focused' : ''}`}>
         <div
           ref={viewportRef}
           className={['swatch-orbit__viewport', zoomed ? 'is-zoomed' : '', ready ? 'is-ready' : '']
@@ -566,7 +656,7 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
                       onClick={(e) => {
                         // detail 0 = keyboard activation, which is never a drag.
                         if (e.detail !== 0 && suppressClickRef.current) return;
-                        openDetail({ id: p.id, hex: p.hex });
+                        openDetail({ id: p.id, hex: p.hex }, e.currentTarget);
                       }}
                     >
                       <span className="swatch-orbit__chip-dot" />
@@ -618,40 +708,24 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
       {/* Siblings of .swatch-orbit (not children) so they position against
           .screen — the whole phone screen — rather than the wheel, and so
           the wheel's overflow clip and container can never trap them. */}
-      {detail && (
+      {detail && destBox && (
         <>
           <div
-            className={`swatch-orbit__scrim${sheetPhase === 'out' ? ' is-exiting' : ''}`}
-            onClick={closeDetail}
+            className={`swatch-orbit__scrim${focusPhase === 'out' ? ' is-exiting' : ''}`}
+            onClick={() => closeDetail('dismiss')}
             aria-hidden="true"
           />
-          <div
-            ref={sheetRef}
-            className={`swatch-orbit__sheet${sheetPhase === 'out' ? ' is-exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`#${detail.hex}`}
-          >
-            <span className="swatch-orbit__sheet-grip" aria-hidden="true" />
-            <div className="swatch-orbit__sheet-row">
-              <span className="swatch-orbit__sheet-swatch" style={{ background: `#${detail.hex}` }} />
-              <span className="swatch-orbit__sheet-hex">#{detail.hex}</span>
-            </div>
-            <div className="swatch-orbit__sheet-actions">
-              <button
-                type="button"
-                className="swatch-orbit__sheet-btn swatch-orbit__sheet-btn--primary"
-                onClick={handleCopy}
-              >
-                {copied ? 'Copied' : 'Copy hex'}
-              </button>
-              <button type="button" className="swatch-orbit__sheet-btn" onClick={handleRemove}>
-                Remove
-              </button>
-            </div>
-            <button type="button" className="swatch-orbit__sheet-close" onClick={closeDetail}>
-              Done
-            </button>
+          <div ref={cardRef}>
+            <SwatchDetailCard
+              swatch={detail}
+              box={cardExpanded ? destBox : (originBox ?? destBox)}
+              expanded={cardExpanded}
+              copied={copied}
+              reduced={reduced}
+              onCopy={handleCopy}
+              onUnsave={handleRemove}
+              onClose={() => closeDetail('dismiss')}
+            />
           </div>
         </>
       )}

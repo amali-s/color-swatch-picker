@@ -2,8 +2,10 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import Header from '../components/Header';
 import PrimaryButton from '../components/PrimaryButton';
 import SwatchOrbit from '../components/SwatchOrbit';
+import SwatchRow from '../components/SwatchRow';
+import ViewSwitcher, { type SwatchViewMode } from '../components/ViewSwitcher';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
-import { DUR_BASE, DUR_FLASH } from '../capture/motion';
+import { DUR_BASE, DUR_FLASH, STAGGER } from '../capture/motion';
 import type { Swatch } from '../types';
 
 interface Props {
@@ -19,6 +21,7 @@ interface Props {
 type Phase = 'empty' | 'empty-in' | 'forward' | 'filled';
 
 const FORWARD_MS = DUR_BASE;
+const VIEW_MODE_KEY = 'lens-swatch:view-mode';
 
 function prefersReduced(): boolean {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -30,14 +33,25 @@ function initialPhase(count: number, sawEmpty: boolean): Phase {
   return 'filled';
 }
 
+function loadViewMode(): SwatchViewMode {
+  try {
+    const v = localStorage.getItem(VIEW_MODE_KEY);
+    if (v === 'list' || v === 'wheel') return v;
+  } catch {
+    /* Storage unavailable — default to the wheel. */
+  }
+  return 'wheel';
+}
+
 /**
  * The Swatches tab — one screen in two data states: the "Empty state" (1:2)
  * card when nothing is saved, and the "Filled" saved-swatches view — a color
- * wheel (`SwatchOrbit`) — once at least one color has been captured. The
- * bottom nav lives in App so the active pill can slide without remounting.
+ * wheel (`SwatchOrbit`) or the restored list (`SwatchRow`) — once at least
+ * one color has been captured. The bottom nav lives in App so the active
+ * pill can slide without remounting.
  *
  * Empty↔filled is a ceremony, not a hard cut: the empty card eases out then
- * the heading + wheel fade up together. First save usually happens on
+ * the heading + collection fade up together. First save usually happens on
  * Camera, so `sawEmpty` (owned by App) is what fires the arrival animation.
  */
 export default function ListScreen({
@@ -50,6 +64,16 @@ export default function ListScreen({
   const reduced = usePrefersReducedMotion();
   const [phase, setPhase] = useState<Phase>(() => initialPhase(swatches.length, sawEmpty));
   const [announcement, setAnnouncement] = useState('');
+  const [viewMode, setViewMode] = useState<SwatchViewMode>(loadViewMode);
+
+  const onViewMode = (mode: SwatchViewMode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode);
+    } catch {
+      /* Storage unavailable — keep going in memory only. */
+    }
+  };
 
   useLayoutEffect(() => {
     if (swatches.length === 0 && phase !== 'empty' && phase !== 'empty-in') {
@@ -80,6 +104,7 @@ export default function ListScreen({
     phase === 'forward' ||
     swatches.length === 0;
   const showList = phase === 'forward' || (phase === 'filled' && swatches.length > 0);
+  const entering = phase === 'forward';
 
   return (
     <div className="screen" style={{ background: 'var(--layer-1)' }}>
@@ -113,19 +138,31 @@ export default function ListScreen({
 
           {showList && (
             <div className="list-swap__filled">
-              <h2
-                className={`swatch-list-heading text-heading-2${
-                  phase === 'forward' ? ' is-entering' : ''
-                }`}
-              >
-                Saved swatches
-              </h2>
-              <SwatchOrbit
-                swatches={swatches}
-                onRemove={onRemove}
-                onAnnounce={setAnnouncement}
-                entering={phase === 'forward'}
-              />
+              <div className={`swatch-list-toolbar${entering ? ' is-entering' : ''}`}>
+                <h2 className="swatch-list-heading text-heading-1">Saved swatches</h2>
+                <ViewSwitcher value={viewMode} onChange={onViewMode} />
+              </div>
+              {viewMode === 'list' ? (
+                <div className="swatch-list">
+                  {swatches.map((swatch, i) => (
+                    <SwatchRow
+                      key={swatch.id}
+                      swatch={swatch}
+                      onRemove={onRemove}
+                      onAnnounce={setAnnouncement}
+                      entering={entering}
+                      enterDelay={entering ? i * STAGGER : 0}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <SwatchOrbit
+                  swatches={swatches}
+                  onRemove={onRemove}
+                  onAnnounce={setAnnouncement}
+                  entering={entering}
+                />
+              )}
             </div>
           )}
         </div>
