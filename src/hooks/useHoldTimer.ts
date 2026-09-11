@@ -14,6 +14,8 @@ interface UseHoldTimerResult {
   cancel: () => void;
   /** Return to idle from any state, e.g. a "Retake". */
   reset: () => void;
+  /** Jump straight to captured and fire `onCapture` (photo upload). */
+  commit: () => void;
 }
 
 /**
@@ -108,8 +110,16 @@ export function useHoldTimer(
     setPhase('idle');
   }, [setPhase, stopRaf]);
 
+  const commit = useCallback(() => {
+    if (stateRef.current === 'captured') return;
+    stopRaf();
+    setProgress(1);
+    setPhase('captured');
+    onCaptureRef.current();
+  }, [setPhase, stopRaf]);
+
   // Cancel any pending frame if the component unmounts mid-hold.
   useEffect(() => stopRaf, [stopRaf]);
 
-  return { state, progress, start, cancel, reset };
+  return { state, progress, start, cancel, reset, commit };
 }

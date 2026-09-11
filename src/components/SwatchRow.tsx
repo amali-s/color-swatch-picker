@@ -15,6 +15,9 @@ interface Props {
   entering?: boolean;
   /** Stagger delay in ms (ceremony rows 0/1/2). */
   enterDelay?: number;
+  selected?: boolean;
+  /** When set, the row body selects instead of copying (desktop inspector). */
+  onSelect?: (swatch: Swatch) => void;
 }
 
 /**
@@ -37,6 +40,8 @@ export default function SwatchRow({
   onAnnounce,
   entering = false,
   enterDelay = 0,
+  selected = false,
+  onSelect,
 }: Props) {
   const { id, hex } = swatch;
   const reduced = usePrefersReducedMotion();
@@ -53,14 +58,18 @@ export default function SwatchRow({
     [],
   );
 
-  const handleCopy = useCallback(async () => {
+  const handleActivate = useCallback(async () => {
+    if (onSelect) {
+      onSelect(swatch);
+      return;
+    }
     const ok = await copyText(`#${hex}`);
     if (!ok) return; // clipboard blocked — no false "Copied" feedback
     setCopied(true);
     onAnnounce(`Copied #${hex}`);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setCopied(false), 1200);
-  }, [hex, onAnnounce]);
+  }, [hex, onAnnounce, onSelect, swatch]);
 
   const handleRemove = useCallback(() => {
     if (unsavePhase !== 'idle') return;
@@ -86,12 +95,19 @@ export default function SwatchRow({
         .join(' ')}
       style={entering && enterDelay ? { animationDelay: `${enterDelay}ms` } : undefined}
     >
-      <div className="swatch-row">
+      <div className={`swatch-row${selected ? ' is-selected' : ''}`}>
         <button
           type="button"
           className="swatch-row__body"
-          onClick={handleCopy}
-          aria-label={copied ? `Copied #${hex}` : `Copy #${hex}`}
+          onClick={handleActivate}
+          aria-current={selected ? 'true' : undefined}
+          aria-label={
+            onSelect
+              ? `View #${hex}`
+              : copied
+                ? `Copied #${hex}`
+                : `Copy #${hex}`
+          }
         >
           <span className="swatch-row__chip" style={{ background: `#${hex}` }} />
           <span

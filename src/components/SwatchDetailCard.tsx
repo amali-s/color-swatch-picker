@@ -9,13 +9,16 @@ export interface CardBox {
 
 interface Props {
   swatch: Swatch;
-  box: CardBox;
+  /** Overlay FLIP box. Ignored when `variant` is `panel`. */
+  box?: CardBox;
   expanded: boolean;
   copied: boolean;
   reduced: boolean;
   onCopy: () => void;
   onUnsave: () => void;
   onClose: () => void;
+  /** Docked laptop/desktop inspector — no overlay, always expanded. */
+  variant?: 'overlay' | 'panel';
 }
 
 /**
@@ -32,19 +35,26 @@ export default function SwatchDetailCard({
   onCopy,
   onUnsave,
   onClose,
+  variant = 'overlay',
 }: Props) {
+  const panel = variant === 'panel';
   return (
     <div
       className={[
         'swatch-focus-card',
-        expanded ? 'is-expanded' : '',
+        expanded || panel ? 'is-expanded' : '',
         reduced ? 'is-reduced' : '',
+        panel ? 'is-panel' : '',
       ]
         .filter(Boolean)
         .join(' ')}
-      style={{ top: box.top, left: box.left, width: box.width, height: box.height }}
-      role="dialog"
-      aria-modal="true"
+      style={
+        panel || !box
+          ? undefined
+          : { top: box.top, left: box.left, width: box.width, height: box.height }
+      }
+      role={panel ? 'region' : 'dialog'}
+      aria-modal={panel ? undefined : 'true'}
       aria-label={`#${swatch.hex}`}
     >
       <div className="swatch-focus-card__color" style={{ background: `#${swatch.hex}` }} />
@@ -66,9 +76,11 @@ export default function SwatchDetailCard({
       >
         <BookmarkIcon />
       </button>
-      <button type="button" className="swatch-focus-card__close text-heading-1" onClick={onClose}>
-        Close
-      </button>
+      {!panel && (
+        <button type="button" className="swatch-focus-card__close text-heading-1" onClick={onClose}>
+          Close
+        </button>
+      )}
     </div>
   );
 }

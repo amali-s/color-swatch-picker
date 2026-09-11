@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import CaptureTarget from '../components/CaptureTarget';
 import CaptureChip from '../components/FloatingChip';
 import SwitchCameraIcon from '../components/SwitchCameraIcon';
+import { ImageUp } from 'lucide-react';
 import { copyText } from '../lib/clipboard';
 import { useCamera } from '../hooks/useCamera';
 import { useColorExtraction } from '../hooks/useColorExtraction';
@@ -130,11 +131,14 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   // Loader pills: hidden on the idle viewfinder, in after a hold beat,
   // out while fading after a cancelled hold.
   const [chipGate, setChipGate] = useState<ChipGate>('hidden');
+  const [hasStill, setHasStill] = useState(false);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const feedLayerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const switchFreezeRef = useRef<HTMLCanvasElement>(null);
+  const stillImageRef = useRef<HTMLImageElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<SVGRectElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
@@ -305,9 +309,29 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   // zoomed viewfinder, so extraction (and every blob anchor derived from it)
   // is in the same space as the frozen frame the chips land on.
   const grabFrame = useCallback(() => {
-    const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return false;
+    if (!canvas) return false;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+
+    const still = stillImageRef.current;
+    if (still) {
+      const srcW = still.naturalWidth;
+      const srcH = still.naturalHeight;
+      if (!srcW || !srcH) return false;
+      const maxEdge = 1920;
+      const scale = Math.min(1, maxEdge / Math.max(srcW, srcH));
+      const width = Math.max(1, Math.round(srcW * scale));
+      const height = Math.max(1, Math.round(srcH * scale));
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(still, 0, 0, width, height);
+      extract(ctx.getImageData(0, 0, width, height));
+      return true;
+    }
+
+    const video = videoRef.current;
+    if (!video) return false;
 
     const width = video.videoWidth;
     const height = video.videoHeight;
@@ -325,8 +349,6 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
 
     canvas.width = crop.sw;
     canvas.height = crop.sh;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return false;
     ctx.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.sw, crop.sh);
 
     extract(ctx.getImageData(0, 0, crop.sw, crop.sh));
@@ -517,6 +539,8 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     sizerRefs.current = [];
     dragBaseRef.current = null;
     capturedAtRef.current = 0;
+    stillImageRef.current = null;
+    setHasStill(false);
     setReticle(null);
     const viewport = viewportRef.current;
     if (viewport) viewport.style.transform = 'scale(1)';
@@ -754,6 +778,37 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     dragBaseRef.current = null;
   }, []);
 
+  const onPickPhoto = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const onPhotoFile = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showToast('Choose a photo to swatch');
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        if (hold.state === 'holding') hold.cancel();
+        stillImageRef.current = img;
+        setHasStill(true);
+        hold.commit();
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        showToast('Could not read that photo');
+      };
+      img.src = url;
+    },
+    [hold, showToast],
+  );
+
   const copyChip = useCallback(
     async (swatch: Swatch) => {
       const hex = `#${swatch.hex}`;
@@ -784,7 +839,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     [],
   );
 
-  const showTarget = cameraReady && !failed;
+  const showTarget = (cameraReady || hasStill || isCaptured) && !failed;
   const targetLabel =
     hold.state === 'holding'
       ? 'Swatching'
@@ -811,7 +866,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     (chipGate === 'in' && (hold.state !== 'idle' || story !== 'live'));
 
   return (
-    <div className="screen" style={{ background: 'var(--layer-1)' }}>
+    <div className="screen screen--camera" style={{ background: 'var(--layer-1)' }}>
       <div
         ref={viewportRef}
         className={`camera-viewport${feedDark ? ' is-dark-feed' : ''}`}
@@ -849,14 +904,15 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
           aria-hidden="true"
         />
 
-        {cameraStatus === 'pending' && (
+        {cameraStatus === 'pending' && !isCaptured && !hasStill && (
           <div className="capture-card">
             <h2 className="capture-card__label">Starting camera…</h2>
           </div>
         )}
-        {cameraStatus === 'error' && (
-          <div className="capture-card">
+        {cameraStatus === 'error' && !isCaptured && !hasStill && (
+          <div className="capture-card capture-card--message">
             <h2 className="capture-card__label">{cameraError}</h2>
+            <p className="capture-card__hint text-body-1">Or upload a photo to swatch.</p>
           </div>
         )}
 
@@ -957,6 +1013,29 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
               rotation={switchRotation}
               animate={!reduced}
             />
+          </button>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={onPhotoFile}
+        />
+        {!isCaptured && (
+          <button
+            type="button"
+            className="upload-photo-btn"
+            aria-label="Upload a photo"
+            disabled={inputLocked}
+            onClick={onPickPhoto}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <ImageUp size={20} strokeWidth={1.75} aria-hidden="true" />
+            <span className="upload-photo-btn__label text-label-1">Upload</span>
           </button>
         )}
       </div>

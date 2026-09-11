@@ -1,10 +1,13 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import Header from '../components/Header';
 import PrimaryButton from '../components/PrimaryButton';
+import SwatchDetailCard from '../components/SwatchDetailCard';
 import SwatchOrbit from '../components/SwatchOrbit';
 import SwatchRow from '../components/SwatchRow';
 import ViewSwitcher, { type SwatchViewMode } from '../components/ViewSwitcher';
+import { copyText } from '../lib/clipboard';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
+import { useWideLayout } from '../hooks/useWideLayout';
 import { DUR_BASE, DUR_FLASH, STAGGER } from '../capture/motion';
 import type { Swatch } from '../types';
 
@@ -62,9 +65,12 @@ export default function ListScreen({
   onConsumedEmpty,
 }: Props) {
   const reduced = usePrefersReducedMotion();
+  const wide = useWideLayout();
   const [phase, setPhase] = useState<Phase>(() => initialPhase(swatches.length, sawEmpty));
   const [announcement, setAnnouncement] = useState('');
   const [viewMode, setViewMode] = useState<SwatchViewMode>(loadViewMode);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const onViewMode = (mode: SwatchViewMode) => {
     setViewMode(mode);
@@ -98,6 +104,42 @@ export default function ListScreen({
     return () => clearTimeout(t);
   }, [phase]);
 
+  useEffect(() => {
+    if (!wide || swatches.length === 0) {
+      if (swatches.length === 0) setSelectedId(null);
+      return;
+    }
+    if (selectedId && swatches.some((s) => s.id === selectedId)) return;
+    setSelectedId(swatches[0].id);
+  }, [wide, swatches, selectedId]);
+
+  const selected = swatches.find((s) => s.id === selectedId) ?? null;
+
+  const onSelect = useCallback((swatch: Swatch) => {
+    setSelectedId(swatch.id);
+    setCopied(false);
+  }, []);
+
+  const onCopySelected = useCallback(async () => {
+    if (!selected) return;
+    const ok = await copyText(`#${selected.hex}`);
+    if (!ok) return;
+    setCopied(true);
+    setAnnouncement(`Copied #${selected.hex}`);
+    window.setTimeout(() => setCopied(false), 1200);
+  }, [selected]);
+
+  const onUnsaveSelected = useCallback(() => {
+    if (!selected) return;
+    const index = swatches.findIndex((s) => s.id === selected.id);
+    onRemove(selected.id);
+    setAnnouncement(`Removed #${selected.hex}`);
+    const next = swatches.filter((s) => s.id !== selected.id);
+    const neighbor = next[Math.min(index, next.length - 1)] ?? null;
+    setSelectedId(neighbor?.id ?? null);
+    setCopied(false);
+  }, [onRemove, selected, swatches]);
+
   const showEmpty =
     phase === 'empty' ||
     phase === 'empty-in' ||
@@ -109,7 +151,7 @@ export default function ListScreen({
   return (
     <div className="screen" style={{ background: 'var(--layer-1)' }}>
       <div className="screen__content">
-        <Header />
+        {!wide && <Header />}
 
         <div className="list-swap">
           {showEmpty && (
@@ -126,42 +168,69 @@ export default function ListScreen({
               <h2 className="text-heading-2" style={{ color: 'var(--text-secondary)' }}>
                 Start swatching
               </h2>
-              <p
-                className="text-body-1"
-                style={{ color: 'var(--text-secondary)', textAlign: 'center', maxWidth: 212 }}
-              >
-                Swipe to open the camera and start collecting colors.
+              <p className="empty-card__copy text-body-1">
+                {wide
+                  ? 'Open the camera or upload a photo and start collecting colors.'
+                  : 'Swipe to open the camera and start collecting colors.'}
               </p>
               <PrimaryButton onClick={onOpenCamera}>Open camera</PrimaryButton>
             </div>
           )}
 
           {showList && (
-            <div className="list-swap__filled">
-              <div className={`swatch-list-toolbar${entering ? ' is-entering' : ''}`}>
-                <h2 className="swatch-list-heading text-heading-1">Saved swatches</h2>
-                <ViewSwitcher value={viewMode} onChange={onViewMode} />
-              </div>
-              {viewMode === 'list' ? (
-                <div className="swatch-list">
-                  {swatches.map((swatch, i) => (
-                    <SwatchRow
-                      key={swatch.id}
-                      swatch={swatch}
-                      onRemove={onRemove}
-                      onAnnounce={setAnnouncement}
-                      entering={entering}
-                      enterDelay={entering ? i * STAGGER : 0}
-                    />
-                  ))}
+            <div className={`list-swap__filled${wide ? ' is-split' : ''}`}>
+              <div className="swatch-split__collection">
+                <div className={`swatch-list-toolbar${entering ? ' is-entering' : ''}`}>
+                  <h2 className="swatch-list-heading text-heading-1">Saved swatches</h2>
+                  <ViewSwitcher value={viewMode} onChange={onViewMode} />
                 </div>
-              ) : (
-                <SwatchOrbit
-                  swatches={swatches}
-                  onRemove={onRemove}
-                  onAnnounce={setAnnouncement}
-                  entering={entering}
-                />
+                {viewMode === 'list' ? (
+                  <div className="swatch-list">
+                    {swatches.map((swatch, i) => (
+                      <SwatchRow
+                        key={swatch.id}
+                        swatch={swatch}
+                        onRemove={onRemove}
+                        onAnnounce={setAnnouncement}
+                        entering={entering}
+                        enterDelay={entering ? i * STAGGER : 0}
+                        selected={wide && swatch.id === selectedId}
+                        onSelect={wide ? onSelect : undefined}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <SwatchOrbit
+                    swatches={swatches}
+                    onRemove={onRemove}
+                    onAnnounce={setAnnouncement}
+                    entering={entering}
+                    selectedId={wide ? selectedId : undefined}
+                    onSelect={wide ? onSelect : undefined}
+                  />
+                )}
+              </div>
+              {wide && (
+                <aside className="swatch-split__panel">
+                  {selected ? (
+                    <SwatchDetailCard
+                      swatch={selected}
+                      expanded
+                      copied={copied}
+                      reduced={reduced}
+                      variant="panel"
+                      onCopy={onCopySelected}
+                      onUnsave={onUnsaveSelected}
+                      onClose={() => setSelectedId(null)}
+                    />
+                  ) : (
+                    <div className="swatch-panel-empty">
+                      <p className="text-body-1" style={{ color: 'var(--text-secondary)' }}>
+                        Select a color to inspect it.
+                      </p>
+                    </div>
+                  )}
+                </aside>
               )}
             </div>
           )}

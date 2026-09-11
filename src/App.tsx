@@ -3,6 +3,7 @@ import { Analytics } from '@vercel/analytics/react';
 import ListScreen from './screens/ListScreen';
 import CameraScreen from './screens/CameraScreen';
 import BottomNav from './components/BottomNav';
+import Header from './components/Header';
 import { useSavedSwatches } from './hooks/useSavedSwatches';
 import './App.css';
 
@@ -21,9 +22,10 @@ function App() {
   }, []);
 
   return (
-    <div className="phone-shell">
-      <div className="phone-screen">
-        <div className="phone-screen__body">
+    <div className="app-shell">
+      <div className="app-screen">
+        <Header className="app-header" />
+        <div className="app-body">
           {view === 'list' ? (
             <ListScreen
               swatches={saved}

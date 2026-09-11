@@ -14,6 +14,12 @@ interface Props {
   onAnnounce: (message: string) => void;
   /** Fade up alongside the heading during the empty→filled ceremony. */
   entering?: boolean;
+  /**
+   * When provided, chip taps select into a side panel instead of opening the
+   * overlay detail card (laptop/desktop).
+   */
+  selectedId?: string | null;
+  onSelect?: (swatch: Swatch) => void;
 }
 
 interface Placed {
@@ -195,7 +201,14 @@ function focusTransform(
  * neither re-renders React every frame — the same approach the camera's hold
  * ring and pinch zoom take.
  */
-export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering = false }: Props) {
+export default function SwatchOrbit({
+  swatches,
+  onRemove,
+  onAnnounce,
+  entering = false,
+  selectedId = null,
+  onSelect,
+}: Props) {
   const reduced = usePrefersReducedMotion();
   const viewportRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -488,6 +501,10 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
 
   const openDetail = useCallback(
     (swatch: Swatch, chipEl: HTMLElement) => {
+      if (onSelect) {
+        onSelect(swatch);
+        return;
+      }
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
       const screen = chipEl.closest('.screen');
       const vp = viewportRef.current;
@@ -521,7 +538,7 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
       setFocusPhase('in');
       setCopied(false);
     },
-    [reduced, zoomTo],
+    [reduced, zoomTo, onSelect],
   );
 
   const closeDetail = useCallback(
@@ -650,7 +667,9 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
                   >
                     <button
                       type="button"
-                      className={`swatch-orbit__chip${detail?.id === p.id ? ' is-active' : ''}`}
+                      className={`swatch-orbit__chip${
+                        (onSelect ? selectedId : detail?.id) === p.id ? ' is-active' : ''
+                      }`}
                       style={{ '--hex': `#${p.hex}` } as React.CSSProperties}
                       aria-label={`View #${p.hex}`}
                       onClick={(e) => {
@@ -680,7 +699,9 @@ export default function SwatchOrbit({ swatches, onRemove, onAnnounce, entering =
               Reset zoom
             </button>
           ) : (
-            <p className="swatch-orbit__hint text-body-1">Tap a color · pinch to zoom</p>
+            <p className="swatch-orbit__hint text-body-1">
+              {onSelect ? 'Click a color · pinch or scroll to zoom' : 'Tap a color · pinch to zoom'}
+            </p>
           )}
           <div className="swatch-orbit__zoom" role="group" aria-label="Zoom">
             <button
