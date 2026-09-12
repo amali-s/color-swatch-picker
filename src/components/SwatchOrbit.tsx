@@ -4,7 +4,7 @@ import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { MAX_ZOOM, MIN_ZOOM, usePinchZoom } from '../hooks/usePinchZoom';
 import { NO_ZOOM, clampZoomTransform, viewportPointToLayer } from '../capture/videoCoords';
 import type { ZoomTransform } from '../capture/videoCoords';
-import { DUR_BASE } from '../capture/motion';
+import { DUR_BASE, DUR_FOCUS, easeSnap } from '../capture/motion';
 import SwatchDetailCard, { type CardBox } from './SwatchDetailCard';
 import type { Swatch } from '../types';
 
@@ -195,7 +195,9 @@ function focusTransform(
  * - Chip tap boxes floor at 44px, and a press that drags or pinches never
  *   counts as a tap.
  * - Tapping a chip zooms the view toward it and morphs the chip into a
- *   detail card (FLIP). Pinch +/− are a separate transform, restored on close.
+ *   detail card (transform FLIP with a short settle bounce). Pinch +/− are a
+ *   separate transform, restored on close. Chip angles stay frozen while the
+ *   card is open so zoom doesn't shuffle them mid-morph.
  *
  * Spin and zoom are painted imperatively (CSS custom properties on refs) so
  * neither re-renders React every frame — the same approach the camera's hold
@@ -238,7 +240,12 @@ export default function SwatchOrbit({
   const tapRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const panRef = useRef<{ id: number; x: number; y: number; tx: number; ty: number } | null>(null);
   const suppressClickRef = useRef(false);
-  const tweenRef = useRef<{ from: ZoomTransform; to: ZoomTransform; start: number } | null>(null);
+  const tweenRef = useRef<{
+    from: ZoomTransform;
+    to: ZoomTransform;
+    start: number;
+    duration: number;
+  } | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -312,8 +319,8 @@ export default function SwatchOrbit({
     const frame = (ts: number) => {
       const tween = tweenRef.current;
       if (tween) {
-        const p = Math.min(1, Math.max(0, (ts - tween.start) / DUR_BASE));
-        const e = 1 - (1 - p) ** 4; // snappy ease-out, close to EASE_SNAP
+        const p = Math.min(1, Math.max(0, (ts - tween.start) / tween.duration));
+        const e = easeSnap(p);
         transformRef.current = {
           zoom: tween.from.zoom + (tween.to.zoom - tween.from.zoom) * e,
           tx: tween.from.tx + (tween.to.tx - tween.from.tx) * e,
@@ -336,6 +343,7 @@ export default function SwatchOrbit({
         Math.abs(z - zoomRef.current) > ZOOM_EPS &&
         pointerCount() === 0 &&
         !tweenRef.current &&
+        detailRef.current === null &&
         ts - changedAt > ZOOM_SETTLE_MS
       ) {
         zoomRef.current = z;
@@ -345,14 +353,18 @@ export default function SwatchOrbit({
       if (baseSpeed > 0) {
         if (lastTs !== null) {
           const dt = Math.min((ts - lastTs) / 1000, 0.1);
+          const focused = detailRef.current !== null;
           const paused =
+            focused ||
             pointerCount() > 0 ||
             hoverRef.current ||
             focusRef.current ||
-            detailRef.current !== null ||
             z > 1 + ZOOM_EPS;
           const target = paused ? 0 : baseSpeed;
-          speed += (target - speed) * Math.min(1, dt * 5);
+          // Snap the spin to a halt as soon as a card is open so chips don't
+          // keep drifting under the morphing overlay.
+          if (focused) speed = 0;
+          else speed += (target - speed) * Math.min(1, dt * 5);
           if (target === 0 && speed < 0.002) speed = 0;
           deg = (deg + speed * dt) % 360;
         }
@@ -370,7 +382,10 @@ export default function SwatchOrbit({
   }, [reduced, paintLayer, pointerCount]);
 
   const zoomTo = useCallback(
-    (target: (base: ZoomTransform, w: number, h: number) => ZoomTransform) => {
+    (
+      target: (base: ZoomTransform, w: number, h: number) => ZoomTransform,
+      duration = DUR_BASE,
+    ) => {
       const el = viewportRef.current;
       if (!el) return;
       const base = tweenRef.current?.to ?? transformRef.current;
@@ -381,7 +396,12 @@ export default function SwatchOrbit({
         paintLayer();
         return;
       }
-      tweenRef.current = { from: transformRef.current, to: next, start: performance.now() };
+      tweenRef.current = {
+        from: transformRef.current,
+        to: next,
+        start: performance.now(),
+        duration,
+      };
     },
     [paintLayer, reduced],
   );
@@ -528,7 +548,7 @@ export default function SwatchOrbit({
         const cx = chip.left + chip.width / 2 - vpRect.left;
         const cy = chip.top + chip.height / 2 - vpRect.top;
         preFocusRef.current = { ...(tweenRef.current?.to ?? transformRef.current) };
-        zoomTo((base, w, h) => focusTransform(cx, cy, w, h, base));
+        zoomTo((base, w, h) => focusTransform(cx, cy, w, h, base), DUR_FOCUS);
       } else {
         setOriginBox(null);
         setDestBox({ left: 64, top: 180, width: CARD_W, height: CARD_H });
@@ -547,7 +567,7 @@ export default function SwatchOrbit({
       closeModeRef.current = mode;
       setFocusPhase('out');
       setCardExpanded(false);
-      zoomTo(() => preFocusRef.current);
+      zoomTo(() => preFocusRef.current, DUR_FOCUS);
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
       closeTimerRef.current = setTimeout(() => {
         const swatch = detailRef.current;
@@ -558,7 +578,7 @@ export default function SwatchOrbit({
         setDetail(null);
         setOriginBox(null);
         setDestBox(null);
-      }, reduced ? 0 : DUR_BASE);
+      }, reduced ? 0 : DUR_FOCUS);
     },
     [reduced, zoomTo, onRemove, onAnnounce],
   );
@@ -739,7 +759,8 @@ export default function SwatchOrbit({
           <div ref={cardRef}>
             <SwatchDetailCard
               swatch={detail}
-              box={cardExpanded ? destBox : (originBox ?? destBox)}
+              box={destBox}
+              fromBox={originBox}
               expanded={cardExpanded}
               copied={copied}
               reduced={reduced}

@@ -37,6 +37,7 @@
   --dur-quick: 160ms;
   --dur-flash: 180ms;
   --dur-base: 220ms;
+  --dur-focus: 380ms;
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-snap-in: cubic-bezier(0.64, 0, 0.78, 0);
   --ease-snap-overshoot: cubic-bezier(0.22, 1.35, 0.36, 1);

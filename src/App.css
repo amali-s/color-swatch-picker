@@ -1700,6 +1700,7 @@
       hsl(360 65% 62%)
     );
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 14%, transparent);
+  transition: filter var(--dur-focus) var(--ease-snap);
 }
 
 .swatch-orbit__tick {
@@ -1781,6 +1782,13 @@
   transition: transform var(--dur-base) var(--ease-snap);
 }
 
+/* Don't interpolate chip angles while the focus zoom is running — the live
+   layer transform already carries them, and a layout re-flow mid-morph is
+   what made neighboring swatches hitch. */
+.swatch-orbit.is-focused .swatch-orbit__node {
+  transition: none;
+}
+
 /* The tappable box floors at 44px even though the visible dot can render
    smaller — "looks right on the wheel" is decoupled from "easy to hit with a
    thumb". Counter-scaled against --zoom so chips stay a constant on-screen
@@ -1840,17 +1848,18 @@
 .swatch-orbit.is-focused .swatch-orbit__hub,
 .swatch-orbit.is-focused .swatch-orbit__tick {
   opacity: 0;
-  transition: opacity var(--dur-base) var(--ease-snap);
+  transition: opacity var(--dur-focus) var(--ease-snap);
 }
 
 .swatch-orbit.is-focused .swatch-orbit__chip {
   opacity: 0.35;
   pointer-events: none;
-  transition: opacity var(--dur-base) var(--ease-snap);
+  transition: opacity var(--dur-focus) var(--ease-snap);
 }
 
 .swatch-orbit.is-focused .swatch-orbit__chip.is-active {
   opacity: 0;
+  transition: none;
 }
 
 .swatch-orbit.is-focused .swatch-orbit__toolbar {
@@ -1916,21 +1925,23 @@
   cursor: default;
 }
 
-/* ---- Focus card (FLIP from the tapped chip) ----
+/* ---- Focus card (transform FLIP from the tapped chip) ----
    Rendered as siblings of .swatch-orbit, so they position against .screen
    (position: relative) — the whole phone screen above the bottom nav. Keep
-   every element between them and .screen unpositioned and untransformed. */
+   every element between them and .screen unpositioned and untransformed.
+   The card always lays out at the dest rect; --flip-* invert it back to the
+   chip, then is-expanded plays a compositor scale/translate with overshoot. */
 
 .swatch-orbit__scrim {
   position: absolute;
   inset: 0;
   background: color-mix(in srgb, var(--text-primary) 18%, transparent);
-  animation: orbitScrimIn var(--dur-base) linear both;
+  animation: orbitScrimIn var(--dur-focus) linear both;
   z-index: 6;
 }
 
 .swatch-orbit__scrim.is-exiting {
-  animation: orbitScrimOut var(--dur-flash) linear both;
+  animation: orbitScrimOut var(--dur-focus) linear both;
 }
 
 @keyframes orbitScrimIn {
@@ -1950,17 +1961,19 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--layer-1);
-  border-radius: 28%;
+  transform-origin: 0 0;
+  transform: translate3d(var(--flip-x, 0px), var(--flip-y, 0px), 0)
+    scale(var(--flip-sx, 1), var(--flip-sy, 1));
+  border-radius: var(--flip-rx, 28%) / var(--flip-ry, 28%);
   box-shadow: 0 8px 28px color-mix(in srgb, var(--text-primary) 22%, transparent);
+  will-change: transform;
   transition:
-    top var(--dur-base) var(--ease-snap),
-    left var(--dur-base) var(--ease-snap),
-    width var(--dur-base) var(--ease-snap),
-    height var(--dur-base) var(--ease-snap),
-    border-radius var(--dur-base) var(--ease-snap);
+    transform var(--dur-focus) var(--ease-snap-overshoot),
+    border-radius var(--dur-focus) var(--ease-snap-overshoot);
 }
 
 .swatch-focus-card.is-expanded {
+  transform: translate3d(0, 0, 0) scale(1, 1);
   border-radius: 8px;
 }
 
@@ -1969,6 +1982,15 @@
   width: 265px;
   height: 325px;
   flex-shrink: 0;
+  transform: none;
+  will-change: auto;
+  border-radius: 8px;
+  transition: none;
+}
+
+.swatch-focus-card.is-reduced {
+  transition: none;
+  will-change: auto;
 }
 
 .swatch-panel-empty {
@@ -1987,10 +2009,10 @@
 .swatch-focus-card__color {
   flex: 1;
   min-height: 0;
+  height: 100%;
   transition:
-    height var(--dur-base) var(--ease-snap),
-    flex-basis var(--dur-base) var(--ease-snap),
-    border-radius var(--dur-base) var(--ease-snap);
+    height var(--dur-focus) var(--ease-snap),
+    border-radius var(--dur-focus) var(--ease-snap);
 }
 
 .swatch-focus-card.is-expanded .swatch-focus-card__color {
@@ -2014,6 +2036,7 @@
 .swatch-focus-card.is-expanded .swatch-focus-card__close {
   opacity: 1;
   pointer-events: auto;
+  transition-delay: calc(var(--dur-focus) / 2);
 }
 
 .swatch-focus-card__kicker {
@@ -2081,6 +2104,10 @@
   }
   .swatch-orbit__viewport.is-ready .swatch-orbit__node,
   .swatch-orbit__chip-dot,
+  .swatch-orbit__wheel,
+  .swatch-orbit.is-focused .swatch-orbit__hub,
+  .swatch-orbit.is-focused .swatch-orbit__tick,
+  .swatch-orbit.is-focused .swatch-orbit__chip,
   .swatch-focus-card,
   .swatch-focus-card__color,
   .swatch-focus-card__kicker,

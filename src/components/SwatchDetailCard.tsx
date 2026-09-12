@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { Swatch } from '../types';
 
 export interface CardBox {
@@ -9,8 +10,13 @@ export interface CardBox {
 
 interface Props {
   swatch: Swatch;
-  /** Overlay FLIP box. Ignored when `variant` is `panel`. */
+  /** Final overlay box. Ignored when `variant` is `panel`. */
   box?: CardBox;
+  /**
+   * Chip rect to morph from. The card always lays out at `box` and a
+   * compositor transform inverts it back to `fromBox` until expanded.
+   */
+  fromBox?: CardBox | null;
   expanded: boolean;
   copied: boolean;
   reduced: boolean;
@@ -23,12 +29,13 @@ interface Props {
 
 /**
  * Figma "Selected color" (88:107) / copy-selected (91:169). The parent
- * animates `box` from the tapped chip rect to 265×325 so this component
- * only has to render the card chrome.
+ * supplies the dest `box` and optional chip `fromBox`; this component
+ * inverts with a transform so the morph stays on the compositor.
  */
 export default function SwatchDetailCard({
   swatch,
   box,
+  fromBox,
   expanded,
   copied,
   reduced,
@@ -38,6 +45,17 @@ export default function SwatchDetailCard({
   variant = 'overlay',
 }: Props) {
   const panel = variant === 'panel';
+  const flip =
+    !panel && box && fromBox && box.width > 0 && box.height > 0
+      ? ({
+          '--flip-x': `${fromBox.left - box.left}px`,
+          '--flip-y': `${fromBox.top - box.top}px`,
+          '--flip-sx': fromBox.width / box.width,
+          '--flip-sy': fromBox.height / box.height,
+          '--flip-rx': `${box.width * 0.28}px`,
+          '--flip-ry': `${box.height * 0.28}px`,
+        } as CSSProperties)
+      : undefined;
   return (
     <div
       className={[
@@ -51,7 +69,13 @@ export default function SwatchDetailCard({
       style={
         panel || !box
           ? undefined
-          : { top: box.top, left: box.left, width: box.width, height: box.height }
+          : {
+              top: box.top,
+              left: box.left,
+              width: box.width,
+              height: box.height,
+              ...flip,
+            }
       }
       role={panel ? 'region' : 'dialog'}
       aria-modal={panel ? undefined : 'true'}
