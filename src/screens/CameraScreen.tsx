@@ -21,6 +21,7 @@ import {
   STAGGER,
   STAGGER_REVERSE,
 } from '../capture/motion';
+import { decodePhotoFile, PhotoFileError, type StillFrame } from '../capture/photoFile';
 import { NO_ZOOM, coverPointToNorm, coverZoomCrop } from '../capture/videoCoords';
 import type { ZoomTransform } from '../capture/videoCoords';
 import type { ChipAnchor, ChipPhase } from '../components/FloatingChip';
@@ -137,7 +138,8 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   const feedLayerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const switchFreezeRef = useRef<HTMLCanvasElement>(null);
-  const stillImageRef = useRef<HTMLImageElement | null>(null);
+  const stillImageRef = useRef<StillFrame | null>(null);
+  const photoGenRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<SVGRectElement>(null);
@@ -316,8 +318,8 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
 
     const still = stillImageRef.current;
     if (still) {
-      const srcW = still.naturalWidth;
-      const srcH = still.naturalHeight;
+      const srcW = still.width;
+      const srcH = still.height;
       if (!srcW || !srcH) return false;
       const maxEdge = 1920;
       const scale = Math.min(1, maxEdge / Math.max(srcW, srcH));
@@ -325,7 +327,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
       const height = Math.max(1, Math.round(srcH * scale));
       canvas.width = width;
       canvas.height = height;
-      ctx.drawImage(still, 0, 0, width, height);
+      ctx.drawImage(still.source, 0, 0, width, height);
       extract(ctx.getImageData(0, 0, width, height));
       return true;
     }
@@ -539,6 +541,7 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
     sizerRefs.current = [];
     dragBaseRef.current = null;
     capturedAtRef.current = 0;
+    stillImageRef.current?.close();
     stillImageRef.current = null;
     setHasStill(false);
     setReticle(null);
@@ -787,24 +790,23 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
       const file = event.target.files?.[0];
       event.target.value = '';
       if (!file) return;
-      if (!file.type.startsWith('image/')) {
-        showToast('Choose a photo to swatch');
-        return;
-      }
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        if (hold.state === 'holding') hold.cancel();
-        stillImageRef.current = img;
-        setHasStill(true);
-        hold.commit();
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        showToast('Could not read that photo');
-      };
-      img.src = url;
+      const gen = ++photoGenRef.current;
+      void decodePhotoFile(file)
+        .then((still) => {
+          if (gen !== photoGenRef.current) {
+            still.close();
+            return;
+          }
+          if (hold.state === 'holding') hold.cancel();
+          stillImageRef.current?.close();
+          stillImageRef.current = still;
+          setHasStill(true);
+          hold.commit();
+        })
+        .catch((err: unknown) => {
+          if (gen !== photoGenRef.current) return;
+          showToast(err instanceof PhotoFileError ? err.message : 'Could not read that photo');
+        });
     },
     [hold, showToast],
   );
@@ -835,6 +837,9 @@ export default function CameraScreen({ savedIds, onToggleSave }: Props) {
   useEffect(
     () => () => {
       if (loaderShowRef.current) clearTimeout(loaderShowRef.current);
+      photoGenRef.current += 1;
+      stillImageRef.current?.close();
+      stillImageRef.current = null;
     },
     [],
   );
