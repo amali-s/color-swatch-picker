@@ -538,8 +538,6 @@
 }
 
 .swatch-row__chip {
-  position: relative;
-  isolation: isolate;
   width: 24px;
   height: 24px;
   border-radius: 2px;
@@ -1717,7 +1715,6 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  isolation: isolate;
   overflow: hidden;
   background:
     radial-gradient(circle, transparent 0%, transparent 72%, color-mix(in srgb, var(--text-primary) 22%, transparent) 100%),
@@ -1769,15 +1766,9 @@
   min-width: 72px;
   min-height: 72px;
   border-radius: 50%;
-  background-color: var(--layer-1);
-  background-image:
+  background:
     radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--foreground) 78%, transparent), transparent 72%),
-    linear-gradient(
-      color-mix(in srgb, var(--layer-1) 50%, transparent),
-      color-mix(in srgb, var(--layer-1) 50%, transparent)
-    ),
-    url('./assets/paper-dry.webp');
-  background-size: auto, auto, 180px 180px;
+    var(--layer-1);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-primary) 14%, transparent);
   display: flex;
   flex-direction: column;
@@ -1853,8 +1844,6 @@
 }
 
 .swatch-orbit__chip-dot {
-  position: relative;
-  isolation: isolate;
   display: block;
   width: clamp(16.5px, 8.25cqw, 27px);
   height: clamp(16.5px, 8.25cqw, 27px);
@@ -1888,72 +1877,6 @@
 
 .swatch-orbit__chip:active .swatch-orbit__chip-dot {
   transform: scale(0.9);
-}
-
-/* Wet cold-press tooth over painted color: pigment pools in the pits
-   (multiply) and a damp film catches on the ridges (overlay + sheen). */
-.swatch-orbit__wheel::before,
-.swatch-orbit__wheel::after,
-.swatch-orbit__chip-dot::before,
-.swatch-orbit__chip-dot::after,
-.swatch-row__chip::before,
-.swatch-row__chip::after,
-.swatch-focus-card__color::before,
-.swatch-focus-card__color::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-}
-
-.swatch-orbit__wheel::before,
-.swatch-orbit__chip-dot::before,
-.swatch-row__chip::before,
-.swatch-focus-card__color::before {
-  background-image: url('./assets/paper-wet.webp');
-  mix-blend-mode: multiply;
-  opacity: 0.23;
-}
-
-.swatch-orbit__wheel::after,
-.swatch-orbit__chip-dot::after,
-.swatch-row__chip::after,
-.swatch-focus-card__color::after {
-  background-image: linear-gradient(
-    155deg,
-    color-mix(in srgb, #fff 13%, transparent) 0%,
-    transparent 42%,
-    color-mix(in srgb, var(--text-primary) 6%, transparent) 100%
-  );
-  mix-blend-mode: overlay;
-  opacity: 0.25;
-}
-
-.swatch-orbit__wheel::before {
-  background-size: 240px 240px;
-}
-
-.swatch-orbit__wheel::after {
-  background-size: auto;
-}
-
-.swatch-orbit__chip-dot::before,
-.swatch-row__chip::before {
-  background-size: 96px 96px;
-}
-
-.swatch-orbit__chip-dot::after,
-.swatch-row__chip::after {
-  background-size: auto;
-}
-
-.swatch-focus-card__color::before {
-  background-size: 200px 200px;
-}
-
-.swatch-focus-card__color::after {
-  background-size: auto;
 }
 
 .swatch-orbit.is-focused .swatch-orbit__hub,
@@ -2071,14 +1994,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--layer-1);
-  background-image:
-    linear-gradient(
-      color-mix(in srgb, var(--layer-1) 50%, transparent),
-      color-mix(in srgb, var(--layer-1) 50%, transparent)
-    ),
-    url('./assets/paper-dry.webp');
-  background-size: auto, 220px 220px;
+  background: var(--layer-1);
   transform-origin: 0 0;
   transform: translate3d(var(--flip-x, 0px), var(--flip-y, 0px), 0)
     scale(var(--flip-sx, 1), var(--flip-sy, 1));
@@ -2115,15 +2031,7 @@
   width: 265px;
   height: 325px;
   border-radius: 2px;
-  background-color: var(--background);
-  background-image:
-    linear-gradient(
-      color-mix(in srgb, var(--background) 50%, transparent),
-      color-mix(in srgb, var(--background) 50%, transparent)
-    ),
-    url('./assets/paper-dry.webp');
-  background-size: auto, 220px 220px;
-  background-blend-mode: normal, soft-light;
+  background: var(--background);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2133,8 +2041,6 @@
 }
 
 .swatch-focus-card__color {
-  position: relative;
-  isolation: isolate;
   flex: 1;
   min-height: 0;
   height: 100%;
