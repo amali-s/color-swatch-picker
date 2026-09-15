@@ -339,7 +339,10 @@ export default function CaptureChip({
           className="capture-chip capture-chip--swatch capture-chip--sizer"
           aria-hidden="true"
         >
-          <span className="capture-chip__square is-filled" style={{ background: `#${swatch.hex}` }} />
+          <span
+            className="capture-chip__square is-filled"
+            style={{ '--hex': `#${swatch.hex}` } as React.CSSProperties}
+          />
           <span className="text-label-2" style={{ color: 'var(--text-secondary)' }}>
             {swatch.hex}
           </span>
@@ -372,7 +375,7 @@ function ChipFace({
     <>
       <span
         className={`capture-chip__square${filled ? ' is-filled' : ''}`}
-        style={filled ? { background: `#${swatch!.hex}` } : undefined}
+        style={filled ? ({ '--hex': `#${swatch!.hex}` } as React.CSSProperties) : undefined}
       />
       <span className="capture-chip__code">
         <ScrambleCode

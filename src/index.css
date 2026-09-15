@@ -27,6 +27,54 @@
      design token spec). */
   --accent: #0095cc;
 
+  /* Substrate — primed cotton canvas.
+     One light source for the whole app: upper left. Every paint surface is
+     lit on its top-left edge and shadowed on its bottom-right, and casts a
+     short shadow, because acrylic sits a hair above the weave rather than
+     floating over it.
+
+     The ground is built from crossed thread layers (each thread reads as a
+     lit cylinder: dark edge → highlight → dark edge), a gesso wash that is
+     deliberately uneven, and a fine fiber grain on top. Every layer sizes
+     itself, so a surface only needs `background-image: var(--canvas-ground)`
+     over its own background-color.
+
+     Warp and weft are deliberately mismatched (4px against 4.5px) and each
+     axis carries a slub layer on a prime-ish pitch that shares no factor
+     with the threads. Woven cloth is never square, and without the mismatch
+     the crossings line up into graph paper. */
+  --weave-warp: 4px;
+  --weave-weft: 4.5px;
+  --weave-shadow: rgba(27, 35, 35, 0.05);
+  --weave-light: rgba(255, 253, 250, 0.3);
+  --weave-slub: rgba(27, 35, 35, 0.035);
+  --canvas-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.12'/%3E%3C/svg%3E");
+  --canvas-ground:
+    var(--canvas-grain),
+    radial-gradient(130% 95% at 14% 6%, rgba(255, 253, 250, 0.5), transparent 58%),
+    radial-gradient(110% 85% at 88% 94%, rgba(27, 35, 35, 0.05), transparent 62%),
+    repeating-linear-gradient(90deg, transparent 0 21px, var(--weave-slub) 21px 23px),
+    repeating-linear-gradient(0deg, transparent 0 29px, var(--weave-slub) 29px 31px),
+    repeating-linear-gradient(
+      90deg,
+      var(--weave-shadow) 0,
+      var(--weave-light) calc(var(--weave-warp) / 2),
+      var(--weave-shadow) var(--weave-warp)
+    ),
+    repeating-linear-gradient(
+      0deg,
+      var(--weave-shadow) 0,
+      var(--weave-light) calc(var(--weave-weft) / 2),
+      var(--weave-shadow) var(--weave-weft)
+    );
+
+  /* Paint: a lit top-left edge, a shadowed bottom-right one, and a short
+     cast shadow. Used by every swatch so they all share one light. */
+  --impasto:
+    inset 1px 1px 0 rgba(255, 253, 250, 0.3),
+    inset -1px -1px 0 rgba(27, 35, 35, 0.15),
+    0 1px 2px rgba(27, 35, 35, 0.2);
+
   /* Type */
   --font-heading: 'Rethink Sans', system-ui, sans-serif;
   --font-body: 'Spectral', Georgia, serif;

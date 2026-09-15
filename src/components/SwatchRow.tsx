@@ -109,7 +109,10 @@ export default function SwatchRow({
                 : `Copy #${hex}`
           }
         >
-          <span className="swatch-row__chip" style={{ background: `#${hex}` }} />
+          <span
+            className="swatch-row__chip"
+            style={{ '--hex': `#${hex}` } as React.CSSProperties}
+          />
           <span
             className={`copy-confirm text-body-2${copied ? ' is-copied' : ''}`}
             aria-hidden="true"

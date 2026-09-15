@@ -81,7 +81,10 @@ export default function SwatchDetailCard({
       aria-modal={panel ? undefined : 'true'}
       aria-label={`#${swatch.hex}`}
     >
-      <div className="swatch-focus-card__color" style={{ background: `#${swatch.hex}` }} />
+      <div
+        className="swatch-focus-card__color"
+        style={{ '--hex': `#${swatch.hex}` } as React.CSSProperties}
+      />
       <p className="swatch-focus-card__kicker text-label-1">HEX code</p>
       <p className="swatch-focus-card__hex text-heading-1">{swatch.hex}</p>
       <button

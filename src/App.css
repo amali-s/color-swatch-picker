@@ -25,18 +25,11 @@
   flex-direction: column;
 }
 
-/* Cold-pressed cotton sheet on the Swatches tab. One texture on the
-   phone/desktop card so the header and body share the same tooth. */
+/* Primed canvas on the Swatches tab. One ground across the phone/desktop
+   card so the header and body share the same weave. */
 .app-screen--swatches {
   background-color: var(--layer-1);
-  background-image:
-    linear-gradient(
-      color-mix(in srgb, var(--layer-1) 50%, transparent),
-      color-mix(in srgb, var(--layer-1) 50%, transparent)
-    ),
-    url('./assets/paper-dry.webp');
-  background-size: auto, 360px 360px;
-  background-repeat: repeat;
+  background-image: var(--canvas-ground);
 }
 
 .app-header {
@@ -344,18 +337,11 @@
   z-index: 1;
 }
 
-/* Empty state card */
+/* Empty state card — a stretched canvas waiting to be painted. */
 .empty-card {
   margin-top: 64px;
   background-color: var(--background);
-  background-image:
-    linear-gradient(
-      color-mix(in srgb, var(--background) 50%, transparent),
-      color-mix(in srgb, var(--background) 50%, transparent)
-    ),
-    url('./assets/paper-dry.webp');
-  background-size: auto, 280px 280px;
-  background-blend-mode: normal, soft-light;
+  background-image: var(--canvas-ground);
   border-radius: 8px;
   padding: 56px 24px;
   display: flex;
@@ -537,11 +523,20 @@
   min-height: 0;
 }
 
+/* A palette-knife swipe, not a color square: the leading edge catches the
+   light, the paint drags out and piles up darker at the trailing end, and
+   the corner radii are all slightly different so no two edges match. */
 .swatch-row__chip {
-  width: 24px;
-  height: 24px;
-  border-radius: 2px;
+  width: 40px;
+  height: 22px;
   flex-shrink: 0;
+  border-radius: 3px 9px 7px 2px / 4px 7px 9px 3px;
+  rotate: -1.2deg;
+  background-color: var(--hex);
+  background-image:
+    linear-gradient(103deg, rgba(255, 253, 250, 0.26) 0 10%, transparent 44%),
+    linear-gradient(97deg, transparent 56%, rgba(27, 35, 35, 0.17) 100%);
+  box-shadow: var(--impasto);
 }
 
 /* Bookmark = the un-save hit area, revealed on row hover/focus (2-172) but
@@ -880,10 +875,10 @@
 .capture-chip__square {
   width: 20px;
   height: 20px;
-  border-radius: 4px;
+  border-radius: 3px 5px 4px 3px;
   flex-shrink: 0;
   border: 1.5px solid rgba(130, 122, 100, 0.4);
-  background: transparent;
+  background-color: var(--hex, transparent);
   transition:
     background-color var(--dur-quick) var(--ease-snap),
     border-color var(--dur-quick) var(--ease-snap);
@@ -891,6 +886,8 @@
 
 .capture-chip__square.is-filled {
   border-color: transparent;
+  background-image: linear-gradient(128deg, rgba(255, 253, 250, 0.2) 0 18%, transparent 52%);
+  box-shadow: var(--impasto);
 }
 
 .capture-chip__code {
@@ -1250,8 +1247,13 @@
   border-radius: 8px;
   background: rgba(255, 248, 240, 0.34);
   border: 1px solid rgba(255, 248, 240, 0.55);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  /* A glaze, not glass: the feed stays sharp through the card and only shifts
+     colour, the way a thin white wash does over what is already painted.
+     Blurring would break the scene into a separate pane. The brightness lift
+     also buys the dark label contrast over dark scenes, which a blur never
+     did — it smeared the contrast around instead of reducing it. */
+  backdrop-filter: saturate(0.62) brightness(1.16);
+  -webkit-backdrop-filter: saturate(0.62) brightness(1.16);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1286,8 +1288,8 @@
   border-radius: inherit;
   background: rgba(255, 248, 240, 0.34);
   border: 1px solid rgba(255, 248, 240, 0.55);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: saturate(0.62) brightness(1.16);
+  -webkit-backdrop-filter: saturate(0.62) brightness(1.16);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1717,7 +1719,6 @@
   border-radius: 50%;
   overflow: hidden;
   background:
-    radial-gradient(circle, transparent 0%, transparent 72%, color-mix(in srgb, var(--text-primary) 22%, transparent) 100%),
     radial-gradient(circle, var(--foreground) 0%, color-mix(in srgb, var(--foreground) 55%, transparent) 30%, transparent 66%),
     conic-gradient(
       from 0deg,
@@ -1726,8 +1727,6 @@
       hsl(240 55% 58%), hsl(270 50% 58%), hsl(300 55% 58%), hsl(330 60% 60%),
       hsl(360 65% 62%)
     );
-  -webkit-mask-image: radial-gradient(closest-side, #000 92%, transparent 100%);
-  mask-image: radial-gradient(closest-side, #000 92%, transparent 100%);
   transition: filter var(--dur-focus) var(--ease-snap);
 }
 
@@ -1843,18 +1842,22 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* A knife-laid dab: unequal corners so no edge reads as machined, lit from
+   the upper left like every other paint surface. */
 .swatch-orbit__chip-dot {
   display: block;
   width: clamp(16.5px, 8.25cqw, 27px);
   height: clamp(16.5px, 8.25cqw, 27px);
-  border-radius: 2px;
-  background: var(--hex);
+  border-radius: 2px 4px 3px 2px;
+  background-color: var(--hex);
+  background-image: linear-gradient(128deg, rgba(255, 253, 250, 0.2) 0 18%, transparent 52%);
+  /* The 1px ring is bare canvas showing around the dab, so it has to sit
+     inside the cast shadow rather than under it. */
   box-shadow:
-    inset 0 1px 1px color-mix(in srgb, #fff 17%, transparent),
-    inset 0 -1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent),
+    inset 1px 1px 0 rgba(255, 253, 250, 0.3),
+    inset -1px -1px 0 rgba(27, 35, 35, 0.15),
     0 0 0 1px var(--layer-1),
-    0 1px 2px color-mix(in srgb, var(--text-primary) 18%, transparent),
-    0 4px 10px color-mix(in srgb, var(--text-primary) 10%, transparent);
+    0 1px 2px rgba(27, 35, 35, 0.2);
   transition:
     box-shadow var(--dur-base) var(--ease-snap),
     transform var(--dur-quick) var(--ease-snap);
@@ -1864,11 +1867,11 @@
 .swatch-orbit__chip:focus-visible .swatch-orbit__chip-dot,
 .swatch-orbit__chip.is-active .swatch-orbit__chip-dot {
   box-shadow:
-    inset 0 1px 1px color-mix(in srgb, #fff 17%, transparent),
-    inset 0 -1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent),
+    inset 1px 1px 0 rgba(255, 253, 250, 0.3),
+    inset -1px -1px 0 rgba(27, 35, 35, 0.15),
     0 0 0 1px var(--layer-1),
     0 0 0 3px var(--accent),
-    0 1px 2px color-mix(in srgb, var(--text-primary) 18%, transparent);
+    0 1px 2px rgba(27, 35, 35, 0.2);
 }
 
 .swatch-orbit__chip:focus-visible {
@@ -2044,6 +2047,11 @@
   flex: 1;
   min-height: 0;
   height: 100%;
+  background-color: var(--hex);
+  background-image: linear-gradient(128deg, rgba(255, 253, 250, 0.16) 0 20%, transparent 56%);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 253, 250, 0.26),
+    inset -1px -1px 0 rgba(27, 35, 35, 0.14);
   transition:
     height var(--dur-focus) var(--ease-snap),
     border-radius var(--dur-focus) var(--ease-snap);
