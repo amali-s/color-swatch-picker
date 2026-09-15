@@ -25,6 +25,20 @@
   flex-direction: column;
 }
 
+/* Cold-pressed cotton sheet on the Swatches tab. One texture on the
+   phone/desktop card so the header and body share the same tooth. */
+.app-screen--swatches {
+  background-color: var(--layer-1);
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--layer-1) 50%, transparent),
+      color-mix(in srgb, var(--layer-1) 50%, transparent)
+    ),
+    url('./assets/paper-dry.webp');
+  background-size: auto, 360px 360px;
+  background-repeat: repeat;
+}
+
 .app-header {
   display: none;
 }
@@ -291,6 +305,10 @@
   position: relative;
 }
 
+.screen--swatches {
+  background: transparent;
+}
+
 .screen__content {
   flex: 1;
   min-height: 0;
@@ -329,7 +347,15 @@
 /* Empty state card */
 .empty-card {
   margin-top: 64px;
-  background: var(--background);
+  background-color: var(--background);
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--background) 50%, transparent),
+      color-mix(in srgb, var(--background) 50%, transparent)
+    ),
+    url('./assets/paper-dry.webp');
+  background-size: auto, 280px 280px;
+  background-blend-mode: normal, soft-light;
   border-radius: 8px;
   padding: 56px 24px;
   display: flex;
@@ -461,10 +487,10 @@
   flex-direction: column;
 }
 
-/* Row collapse: max-height 56→0 so neighbors slide instead of jumping.
+/* Row collapse: max-height 48→0 so neighbors slide instead of jumping.
    Overflow stays visible at rest so the 8px enter travel is not clipped. */
 .swatch-row-slot {
-  max-height: 56px;
+  max-height: 48px;
   opacity: 1;
   transition:
     max-height var(--dur-flash) var(--ease-snap-in),
@@ -481,7 +507,7 @@
 .swatch-row {
   display: flex;
   align-items: center;
-  /* Full-width bottom hairline divider. Chip 32 + body padding 12×2 = 56. */
+  /* Full-width bottom hairline divider. Chip 24 + body padding 12×2 = 48. */
   border-bottom: 1px solid var(--background);
 }
 
@@ -512,9 +538,11 @@
 }
 
 .swatch-row__chip {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  position: relative;
+  isolation: isolate;
+  width: 24px;
+  height: 24px;
+  border-radius: 2px;
   flex-shrink: 0;
 }
 
@@ -1689,6 +1717,8 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
+  isolation: isolate;
+  overflow: hidden;
   background:
     radial-gradient(circle, transparent 0%, transparent 72%, color-mix(in srgb, var(--text-primary) 22%, transparent) 100%),
     radial-gradient(circle, var(--foreground) 0%, color-mix(in srgb, var(--foreground) 55%, transparent) 30%, transparent 66%),
@@ -1699,7 +1729,8 @@
       hsl(240 55% 58%), hsl(270 50% 58%), hsl(300 55% 58%), hsl(330 60% 60%),
       hsl(360 65% 62%)
     );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 14%, transparent);
+  -webkit-mask-image: radial-gradient(closest-side, #000 92%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 92%, transparent 100%);
   transition: filter var(--dur-focus) var(--ease-snap);
 }
 
@@ -1738,7 +1769,15 @@
   min-width: 72px;
   min-height: 72px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, var(--foreground), var(--layer-1));
+  background-color: var(--layer-1);
+  background-image:
+    radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--foreground) 78%, transparent), transparent 72%),
+    linear-gradient(
+      color-mix(in srgb, var(--layer-1) 50%, transparent),
+      color-mix(in srgb, var(--layer-1) 50%, transparent)
+    ),
+    url('./assets/paper-dry.webp');
+  background-size: auto, auto, 180px 180px;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-primary) 14%, transparent);
   display: flex;
   flex-direction: column;
@@ -1797,8 +1836,8 @@
   position: absolute;
   left: 0;
   top: 0;
-  width: max(44px, clamp(22px, 11cqw, 36px));
-  height: max(44px, clamp(22px, 11cqw, 36px));
+  width: max(44px, clamp(16.5px, 8.25cqw, 27px));
+  height: max(44px, clamp(16.5px, 8.25cqw, 27px));
   transform: translate(-50%, -50%)
     rotate(calc(-1 * (var(--hue) * 1deg - 90deg) - var(--spin, 0deg)))
     scale(calc(1 / var(--zoom, 1)));
@@ -1814,12 +1853,16 @@
 }
 
 .swatch-orbit__chip-dot {
+  position: relative;
+  isolation: isolate;
   display: block;
-  width: clamp(22px, 11cqw, 36px);
-  height: clamp(22px, 11cqw, 36px);
-  border-radius: 28%;
+  width: clamp(16.5px, 8.25cqw, 27px);
+  height: clamp(16.5px, 8.25cqw, 27px);
+  border-radius: 2px;
   background: var(--hex);
   box-shadow:
+    inset 0 1px 1px color-mix(in srgb, #fff 17%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent),
     0 0 0 1px var(--layer-1),
     0 1px 2px color-mix(in srgb, var(--text-primary) 18%, transparent),
     0 4px 10px color-mix(in srgb, var(--text-primary) 10%, transparent);
@@ -1832,6 +1875,8 @@
 .swatch-orbit__chip:focus-visible .swatch-orbit__chip-dot,
 .swatch-orbit__chip.is-active .swatch-orbit__chip-dot {
   box-shadow:
+    inset 0 1px 1px color-mix(in srgb, #fff 17%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent),
     0 0 0 1px var(--layer-1),
     0 0 0 3px var(--accent),
     0 1px 2px color-mix(in srgb, var(--text-primary) 18%, transparent);
@@ -1843,6 +1888,72 @@
 
 .swatch-orbit__chip:active .swatch-orbit__chip-dot {
   transform: scale(0.9);
+}
+
+/* Wet cold-press tooth over painted color: pigment pools in the pits
+   (multiply) and a damp film catches on the ridges (overlay + sheen). */
+.swatch-orbit__wheel::before,
+.swatch-orbit__wheel::after,
+.swatch-orbit__chip-dot::before,
+.swatch-orbit__chip-dot::after,
+.swatch-row__chip::before,
+.swatch-row__chip::after,
+.swatch-focus-card__color::before,
+.swatch-focus-card__color::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.swatch-orbit__wheel::before,
+.swatch-orbit__chip-dot::before,
+.swatch-row__chip::before,
+.swatch-focus-card__color::before {
+  background-image: url('./assets/paper-wet.webp');
+  mix-blend-mode: multiply;
+  opacity: 0.23;
+}
+
+.swatch-orbit__wheel::after,
+.swatch-orbit__chip-dot::after,
+.swatch-row__chip::after,
+.swatch-focus-card__color::after {
+  background-image: linear-gradient(
+    155deg,
+    color-mix(in srgb, #fff 13%, transparent) 0%,
+    transparent 42%,
+    color-mix(in srgb, var(--text-primary) 6%, transparent) 100%
+  );
+  mix-blend-mode: overlay;
+  opacity: 0.25;
+}
+
+.swatch-orbit__wheel::before {
+  background-size: 240px 240px;
+}
+
+.swatch-orbit__wheel::after {
+  background-size: auto;
+}
+
+.swatch-orbit__chip-dot::before,
+.swatch-row__chip::before {
+  background-size: 96px 96px;
+}
+
+.swatch-orbit__chip-dot::after,
+.swatch-row__chip::after {
+  background-size: auto;
+}
+
+.swatch-focus-card__color::before {
+  background-size: 200px 200px;
+}
+
+.swatch-focus-card__color::after {
+  background-size: auto;
 }
 
 .swatch-orbit.is-focused .swatch-orbit__hub,
@@ -1960,11 +2071,18 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--layer-1);
+  background-color: var(--layer-1);
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--layer-1) 50%, transparent),
+      color-mix(in srgb, var(--layer-1) 50%, transparent)
+    ),
+    url('./assets/paper-dry.webp');
+  background-size: auto, 220px 220px;
   transform-origin: 0 0;
   transform: translate3d(var(--flip-x, 0px), var(--flip-y, 0px), 0)
     scale(var(--flip-sx, 1), var(--flip-sy, 1));
-  border-radius: var(--flip-rx, 28%) / var(--flip-ry, 28%);
+  border-radius: var(--flip-rx, 2px) / var(--flip-ry, 2px);
   box-shadow: 0 8px 28px color-mix(in srgb, var(--text-primary) 22%, transparent);
   will-change: transform;
   transition:
@@ -1974,7 +2092,7 @@
 
 .swatch-focus-card.is-expanded {
   transform: translate3d(0, 0, 0) scale(1, 1);
-  border-radius: 8px;
+  border-radius: 2px;
 }
 
 .swatch-focus-card.is-panel {
@@ -1984,7 +2102,7 @@
   flex-shrink: 0;
   transform: none;
   will-change: auto;
-  border-radius: 8px;
+  border-radius: 2px;
   transition: none;
 }
 
@@ -1996,8 +2114,16 @@
 .swatch-panel-empty {
   width: 265px;
   height: 325px;
-  border-radius: 8px;
-  background: var(--background);
+  border-radius: 2px;
+  background-color: var(--background);
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--background) 50%, transparent),
+      color-mix(in srgb, var(--background) 50%, transparent)
+    ),
+    url('./assets/paper-dry.webp');
+  background-size: auto, 220px 220px;
+  background-blend-mode: normal, soft-light;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2007,6 +2133,8 @@
 }
 
 .swatch-focus-card__color {
+  position: relative;
+  isolation: isolate;
   flex: 1;
   min-height: 0;
   height: 100%;
@@ -2018,7 +2146,7 @@
 .swatch-focus-card.is-expanded .swatch-focus-card__color {
   flex: none;
   height: 190px;
-  border-radius: 8px 8px 0 0;
+  border-radius: 2px 2px 0 0;
 }
 
 .swatch-focus-card__kicker,

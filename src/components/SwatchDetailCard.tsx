@@ -52,8 +52,8 @@ export default function SwatchDetailCard({
           '--flip-y': `${fromBox.top - box.top}px`,
           '--flip-sx': fromBox.width / box.width,
           '--flip-sy': fromBox.height / box.height,
-          '--flip-rx': `${box.width * 0.28}px`,
-          '--flip-ry': `${box.height * 0.28}px`,
+          '--flip-rx': '2px',
+          '--flip-ry': '2px',
         } as CSSProperties)
       : undefined;
   return (

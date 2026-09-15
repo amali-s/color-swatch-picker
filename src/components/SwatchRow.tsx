@@ -31,7 +31,7 @@ interface Props {
  *
  * Un-save is a two-beat: P1 bookmark scale (160ms) then the row itself
  * collapses (180ms). `onRemove` fires only after both, so the list does not
- * unmount the row on the click frame. The row is the object — the 32px
+ * unmount the row on the click frame. The row is the object — the 24px
  * square does not animate on its own.
  */
 export default function SwatchRow({

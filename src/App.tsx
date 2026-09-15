@@ -27,7 +27,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className="app-screen">
+      <div className={`app-screen${view === 'list' ? ' app-screen--swatches' : ''}`}>
         {wide && <Header className="app-header" />}
         {wide &&
           (view === 'list' ? (

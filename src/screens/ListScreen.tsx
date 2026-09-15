@@ -149,7 +149,7 @@ export default function ListScreen({
   const entering = phase === 'forward';
 
   return (
-    <div className="screen" style={{ background: 'var(--layer-1)' }}>
+    <div className="screen screen--swatches">
       <div className="screen__content">
         {!wide && <Header />}
 
