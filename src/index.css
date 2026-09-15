@@ -45,9 +45,9 @@
      the crossings line up into graph paper. */
   --weave-warp: 4px;
   --weave-weft: 4.5px;
-  --weave-shadow: rgba(27, 35, 35, 0.05);
-  --weave-light: rgba(255, 253, 250, 0.3);
-  --weave-slub: rgba(27, 35, 35, 0.035);
+  --weave-shadow: rgba(27, 35, 35, 0.025);
+  --weave-light: rgba(255, 253, 250, 0.15);
+  --weave-slub: rgba(27, 35, 35, 0.0175);
   --canvas-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='0.12'/%3E%3C/svg%3E");
   --canvas-ground:
     var(--canvas-grain),

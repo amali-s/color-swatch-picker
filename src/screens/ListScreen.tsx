@@ -14,6 +14,7 @@ import type { Swatch } from '../types';
 interface Props {
   swatches: Swatch[];
   onRemove: (id: string) => void;
+  onUpdateNote: (id: string, note: string) => void;
   onOpenCamera: () => void;
   /** True if this session has seen an empty list (survives the camera tab). */
   sawEmpty: boolean;
@@ -60,6 +61,7 @@ function loadViewMode(): SwatchViewMode {
 export default function ListScreen({
   swatches,
   onRemove,
+  onUpdateNote,
   onOpenCamera,
   sawEmpty,
   onConsumedEmpty,
@@ -203,6 +205,7 @@ export default function ListScreen({
                   <SwatchOrbit
                     swatches={swatches}
                     onRemove={onRemove}
+                    onSaveNote={onUpdateNote}
                     onAnnounce={setAnnouncement}
                     entering={entering}
                     selectedId={wide ? selectedId : undefined}
@@ -221,6 +224,7 @@ export default function ListScreen({
                       variant="panel"
                       onCopy={onCopySelected}
                       onUnsave={onUnsaveSelected}
+                      onSaveNote={(note) => onUpdateNote(selected.id, note)}
                       onClose={() => setSelectedId(null)}
                     />
                   ) : (

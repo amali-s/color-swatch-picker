@@ -11,6 +11,7 @@ import type { Swatch } from '../types';
 interface Props {
   swatches: Swatch[];
   onRemove: (id: string) => void;
+  onSaveNote: (id: string, note: string) => void;
   onAnnounce: (message: string) => void;
   /** Fade up alongside the heading during the empty→filled ceremony. */
   entering?: boolean;
@@ -45,7 +46,7 @@ const FOCUS_ZOOM_FACTOR = 1.6;
 /** How far the focused chip slides toward the viewport center (0–1). */
 const FOCUS_PULL = 0.42;
 const CARD_W = 265;
-const CARD_H = 325;
+const CARD_H = 380;
 /**
  * On-screen center-to-center clearance between chips (px). Chip tap boxes
  * floor at 44px (see .swatch-orbit__chip), so 50px keeps two touch targets
@@ -206,6 +207,7 @@ function focusTransform(
 export default function SwatchOrbit({
   swatches,
   onRemove,
+  onSaveNote,
   onAnnounce,
   entering = false,
   selectedId = null,
@@ -695,7 +697,10 @@ export default function SwatchOrbit({
                       onClick={(e) => {
                         // detail 0 = keyboard activation, which is never a drag.
                         if (e.detail !== 0 && suppressClickRef.current) return;
-                        openDetail({ id: p.id, hex: p.hex }, e.currentTarget);
+                        openDetail(
+                          swatches.find((s) => s.id === p.id) ?? { id: p.id, hex: p.hex },
+                          e.currentTarget,
+                        );
                       }}
                     >
                       <span className="swatch-orbit__chip-dot" />
@@ -758,7 +763,7 @@ export default function SwatchOrbit({
           />
           <div ref={cardRef}>
             <SwatchDetailCard
-              swatch={detail}
+              swatch={swatches.find((s) => s.id === detail.id) ?? detail}
               box={destBox}
               fromBox={originBox}
               expanded={cardExpanded}
@@ -766,6 +771,7 @@ export default function SwatchOrbit({
               reduced={reduced}
               onCopy={handleCopy}
               onUnsave={handleRemove}
+              onSaveNote={(note) => onSaveNote(detail.id, note)}
               onClose={() => closeDetail('dismiss')}
             />
           </div>

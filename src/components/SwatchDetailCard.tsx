@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import type { Swatch } from '../types';
 
 export interface CardBox {
@@ -23,6 +23,7 @@ interface Props {
   onCopy: () => void;
   onUnsave: () => void;
   onClose: () => void;
+  onSaveNote: (note: string) => void;
   /** Docked laptop/desktop inspector — no overlay, always expanded. */
   variant?: 'overlay' | 'panel';
 }
@@ -42,6 +43,7 @@ export default function SwatchDetailCard({
   onCopy,
   onUnsave,
   onClose,
+  onSaveNote,
   variant = 'overlay',
 }: Props) {
   const panel = variant === 'panel';
@@ -56,6 +58,7 @@ export default function SwatchDetailCard({
           '--flip-ry': '2px',
         } as CSSProperties)
       : undefined;
+
   return (
     <div
       className={[
@@ -83,7 +86,7 @@ export default function SwatchDetailCard({
     >
       <div
         className="swatch-focus-card__color"
-        style={{ '--hex': `#${swatch.hex}` } as React.CSSProperties}
+        style={{ '--hex': `#${swatch.hex}` } as CSSProperties}
       />
       <p className="swatch-focus-card__kicker text-label-1">HEX code</p>
       <p className="swatch-focus-card__hex text-heading-1">{swatch.hex}</p>
@@ -103,12 +106,75 @@ export default function SwatchDetailCard({
       >
         <BookmarkIcon />
       </button>
-      {!panel && (
-        <button type="button" className="swatch-focus-card__close text-heading-1" onClick={onClose}>
-          Close
-        </button>
-      )}
+      <NotesEditor
+        key={swatch.id}
+        swatch={swatch}
+        showClose={!panel}
+        onSaveNote={onSaveNote}
+        onClose={onClose}
+      />
     </div>
+  );
+}
+
+function NotesEditor({
+  swatch,
+  showClose,
+  onSaveNote,
+  onClose,
+}: {
+  swatch: Swatch;
+  showClose: boolean;
+  onSaveNote: (note: string) => void;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(swatch.note ?? '');
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const labelId = `swatch-note-label-${swatch.id}`;
+
+  const startEdit = () => {
+    setEditing(true);
+    requestAnimationFrame(() => noteRef.current?.focus());
+  };
+
+  const saveNote = () => {
+    onSaveNote(draft);
+    setEditing(false);
+    setDraft(draft.trim());
+  };
+
+  return (
+    <>
+      <p className="swatch-focus-card__notes-kicker text-label-1" id={labelId}>
+        Notes
+      </p>
+      <textarea
+        ref={noteRef}
+        id={`swatch-note-${swatch.id}`}
+        className="swatch-focus-card__note text-body-1"
+        readOnly={!editing}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="How you use this color"
+        rows={3}
+        aria-labelledby={labelId}
+      />
+      <div className="swatch-focus-card__actions">
+        <button
+          type="button"
+          className="swatch-focus-card__ghost text-heading-1"
+          onClick={editing ? saveNote : startEdit}
+        >
+          {editing ? 'Save changes' : 'Edit'}
+        </button>
+        {showClose && (
+          <button type="button" className="swatch-focus-card__ghost text-heading-1" onClick={onClose}>
+            Close
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 

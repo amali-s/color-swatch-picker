@@ -15,6 +15,8 @@ interface UseSavedSwatchesResult {
   remove: (id: string) => void;
   /** Add if absent, remove if present — the camera chip bookmark toggle. */
   toggle: (swatch: Swatch) => void;
+  /** Replace the free-text note on a saved swatch. Empty string clears it. */
+  updateNote: (id: string, note: string) => void;
 }
 
 /**
@@ -61,9 +63,21 @@ export function useSavedSwatches(): UseSavedSwatchesResult {
     );
   }, []);
 
+  const updateNote = useCallback((id: string, note: string) => {
+    const trimmed = note.trim();
+    setSaved((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        if (trimmed) return { ...s, note: trimmed };
+        if (!s.note) return s;
+        return { id: s.id, hex: s.hex };
+      }),
+    );
+  }, []);
+
   const savedIds = new Set(saved.map((s) => s.id));
 
-  return { saved, savedIds, add, remove, toggle };
+  return { saved, savedIds, add, remove, toggle, updateNote };
 }
 
 /** Read + validate the persisted list once, on first render. */
@@ -74,13 +88,14 @@ function loadInitial(): Swatch[] {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return sortSwatchesByLightness(
-      parsed.filter(
-        (s): s is Swatch =>
-          typeof s === 'object' &&
-          s !== null &&
-          typeof (s as Swatch).id === 'string' &&
-          typeof (s as Swatch).hex === 'string',
-      ),
+      parsed.flatMap((item): Swatch[] => {
+        if (typeof item !== 'object' || item === null) return [];
+        const rec = item as Record<string, unknown>;
+        if (typeof rec.id !== 'string' || typeof rec.hex !== 'string') return [];
+        const swatch: Swatch = { id: rec.id, hex: rec.hex };
+        if (typeof rec.note === 'string' && rec.note.trim()) swatch.note = rec.note.trim();
+        return [swatch];
+      }),
     );
   } catch {
     return [];

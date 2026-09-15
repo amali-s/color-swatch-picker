@@ -537,6 +537,15 @@
     linear-gradient(103deg, rgba(255, 253, 250, 0.26) 0 10%, transparent 44%),
     linear-gradient(97deg, transparent 56%, rgba(27, 35, 35, 0.17) 100%);
   box-shadow: var(--impasto);
+  transform: scale(1);
+  transition: transform var(--dur-quick) var(--ease-snap-in);
+}
+
+.swatch-row:hover .swatch-row__chip,
+.swatch-row__body:focus-visible .swatch-row__chip,
+.swatch-row__body:active .swatch-row__chip {
+  transform: scale(1.1);
+  transition-timing-function: var(--ease-snap);
 }
 
 /* Bookmark = the un-save hit area, revealed on row hover/focus (2-172) but
@@ -1621,6 +1630,7 @@
   .swatch-row-slot.is-exiting,
   .swatch-row-slot.is-exiting .swatch-row__body,
   .swatch-row__body,
+  .swatch-row__chip,
   .camera-feed-layer,
   .camera-feed-layer.is-faded {
     transition: none;
@@ -1858,28 +1868,27 @@
     inset -1px -1px 0 rgba(27, 35, 35, 0.15),
     0 0 0 1px var(--layer-1),
     0 1px 2px rgba(27, 35, 35, 0.2);
-  transition:
-    box-shadow var(--dur-base) var(--ease-snap),
-    transform var(--dur-quick) var(--ease-snap);
+  transform: scale(1);
+  transition: transform var(--dur-quick) var(--ease-snap-in);
+}
+
+.swatch-orbit__chip:hover,
+.swatch-orbit__chip:focus-visible,
+.swatch-orbit__chip:active,
+.swatch-orbit__chip.is-active {
+  z-index: 2;
 }
 
 .swatch-orbit__chip:hover .swatch-orbit__chip-dot,
 .swatch-orbit__chip:focus-visible .swatch-orbit__chip-dot,
+.swatch-orbit__chip:active .swatch-orbit__chip-dot,
 .swatch-orbit__chip.is-active .swatch-orbit__chip-dot {
-  box-shadow:
-    inset 1px 1px 0 rgba(255, 253, 250, 0.3),
-    inset -1px -1px 0 rgba(27, 35, 35, 0.15),
-    0 0 0 1px var(--layer-1),
-    0 0 0 3px var(--accent),
-    0 1px 2px rgba(27, 35, 35, 0.2);
+  transform: scale(1.1);
+  transition-timing-function: var(--ease-snap);
 }
 
 .swatch-orbit__chip:focus-visible {
   outline: none;
-}
-
-.swatch-orbit__chip:active .swatch-orbit__chip-dot {
-  transform: scale(0.9);
 }
 
 .swatch-orbit.is-focused .swatch-orbit__hub,
@@ -2017,7 +2026,7 @@
 .swatch-focus-card.is-panel {
   position: relative;
   width: 265px;
-  height: 325px;
+  height: 380px;
   flex-shrink: 0;
   transform: none;
   will-change: auto;
@@ -2032,7 +2041,7 @@
 
 .swatch-panel-empty {
   width: 265px;
-  height: 325px;
+  height: 380px;
   border-radius: 2px;
   background: var(--background);
   display: flex;
@@ -2066,7 +2075,9 @@
 .swatch-focus-card__kicker,
 .swatch-focus-card__hex,
 .swatch-focus-card__icon,
-.swatch-focus-card__close {
+.swatch-focus-card__notes-kicker,
+.swatch-focus-card__note,
+.swatch-focus-card__actions {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--dur-quick) var(--ease-snap);
@@ -2075,7 +2086,9 @@
 .swatch-focus-card.is-expanded .swatch-focus-card__kicker,
 .swatch-focus-card.is-expanded .swatch-focus-card__hex,
 .swatch-focus-card.is-expanded .swatch-focus-card__icon,
-.swatch-focus-card.is-expanded .swatch-focus-card__close {
+.swatch-focus-card.is-expanded .swatch-focus-card__notes-kicker,
+.swatch-focus-card.is-expanded .swatch-focus-card__note,
+.swatch-focus-card.is-expanded .swatch-focus-card__actions {
   opacity: 1;
   pointer-events: auto;
   transition-delay: calc(var(--dur-focus) / 2);
@@ -2120,10 +2133,58 @@
   height: 20px;
 }
 
-.swatch-focus-card__close {
+.swatch-focus-card__notes-kicker {
   position: absolute;
   left: 16px;
-  top: 283px;
+  top: 254px;
+  margin: 0;
+  color: var(--text-tertiary);
+}
+
+.swatch-focus-card__note {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 272px;
+  height: 52px;
+  margin: 0;
+  padding: 4px 8px;
+  resize: none;
+  overflow: auto;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-secondary);
+  caret-color: var(--text-primary);
+  cursor: default;
+}
+
+.swatch-focus-card__note::placeholder {
+  color: var(--text-disabled);
+}
+
+.swatch-focus-card__note:not(:read-only) {
+  cursor: text;
+  background: color-mix(in srgb, var(--background) 55%, var(--layer-1));
+  box-shadow: inset 0 0 0 0.4px var(--text-tertiary);
+}
+
+.swatch-focus-card__note:focus-visible {
+  outline: 2px solid var(--dark-blue);
+  outline-offset: 2px;
+}
+
+.swatch-focus-card__actions {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 336px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.swatch-focus-card__ghost {
   margin: 0;
   padding: 4px 8px;
   border-radius: 16px;
@@ -2132,7 +2193,7 @@
 }
 
 .swatch-focus-card__icon:focus-visible,
-.swatch-focus-card__close:focus-visible {
+.swatch-focus-card__ghost:focus-visible {
   outline: 2px solid var(--dark-blue);
   outline-offset: 2px;
   border-radius: 4px;
@@ -2155,7 +2216,9 @@
   .swatch-focus-card__kicker,
   .swatch-focus-card__hex,
   .swatch-focus-card__icon,
-  .swatch-focus-card__close,
+  .swatch-focus-card__notes-kicker,
+  .swatch-focus-card__note,
+  .swatch-focus-card__actions,
   .view-switcher__pill {
     transition: none;
   }

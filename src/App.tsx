@@ -15,7 +15,7 @@ export type View = 'list' | 'camera';
 function App() {
   const [view, setView] = useState<View>('list');
   const wide = useWideLayout();
-  const { saved, savedIds, remove, toggle } = useSavedSwatches();
+  const { saved, savedIds, remove, toggle, updateNote } = useSavedSwatches();
   // Survives ListScreen unmounting on the camera tab. Hydrating a filled
   // list from localStorage starts false — that is not a first-save ceremony.
   const sawEmptyRef = useRef(saved.length === 0);
@@ -54,6 +54,7 @@ function App() {
             <ListScreen
               swatches={saved}
               onRemove={remove}
+              onUpdateNote={updateNote}
               onOpenCamera={() => setView('camera')}
               sawEmpty={sawEmptyRef.current}
               onConsumedEmpty={onConsumedEmpty}
